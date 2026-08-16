@@ -1,0 +1,157 @@
+package com.example.iptvplayer
+
+import android.content.Context
+import android.content.pm.PackageManager
+import androidx.activity.ComponentActivity
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Shapes
+import androidx.compose.material3.Typography
+import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Density
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.core.view.WindowCompat
+
+/**
+ * 系统栏安全 padding：仅手机/平板（非 TV）加状态栏+导航栏 inset 的 padding，
+ * 避免内容被状态栏遮挡、顶部触摸被拦截。电视设备无系统栏，不加（防误偏移）。
+ * imePadding：输入法弹出时内容上移避让，保证按钮不被键盘盖住。
+ */
+@Composable
+fun Modifier.systemBarsPaddingCompat(): Modifier {
+    val context = LocalContext.current
+    if (isTvDevice(context)) return this
+    return windowInsetsPadding(WindowInsets.systemBars).imePadding()
+}
+
+/**
+ * 窗口尺寸类型：用于电视 / 平板 / 手机 自适应。
+ * - COMPACT：手机竖屏（< 600dp），单栏布局、字号略小
+ * - MEDIUM：小平板 / 手机横屏（600~840dp），双栏、中等间距
+ * - EXPANDED：电视 / 大平板（> 840dp），双栏、大间距大字号
+ */
+enum class WindowType { COMPACT, MEDIUM, EXPANDED }
+
+/** 根据当前屏幕宽度推断窗口类型。 */
+@Composable
+fun rememberWindowType(): WindowType {
+    val configuration = LocalConfiguration.current
+    return when {
+        configuration.screenWidthDp < 600 -> WindowType.COMPACT
+        configuration.screenWidthDp < 840 -> WindowType.MEDIUM
+        else -> WindowType.EXPANDED
+    }
+}
+
+/** 是否为 TV（Leanback）设备：决定默认交互方式（遥控器方向键）。 */
+fun isTvDevice(context: Context): Boolean =
+    context.packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK)
+
+/**
+ * 设备是否有可用的系统输入法。
+ * 电视上优先用系统键盘（Gboard for TV，支持语音和拼音），
+ * 只有完全没有输入法的盒子（部分山寨盒子的精简固件）才回退到 App 自绘的屏上键盘。
+ */
+fun hasSystemIme(context: Context): Boolean {
+    val imm = context.getSystemService(Context.INPUT_METHOD_SERVICE)
+        as? android.view.inputmethod.InputMethodManager ?: return false
+    return imm.enabledInputMethodList.isNotEmpty()
+}
+
+/**
+ * 品牌渐变：靛蓝 → 玫红 的多彩渐变。
+ * 用于标题文字、高亮按钮、选中态等，突出"彩色渐变"的设计语言。
+ */
+val BrandGradient: Brush = Brush.linearGradient(
+    colors = listOf(Color(0xFF5B7BFA), Color(0xFFA445B2), Color(0xFFFC5C7D))
+)
+
+/**
+ * 柔和渐变（比 BrandGradient 略淡）：用于大面积背景/卡片点缀。
+ */
+val SoftGradient: Brush = Brush.linearGradient(
+    colors = listOf(Color(0xFFEAF1FF), Color(0xFFFDF0F6))
+)
+
+/**
+ * 白色主调 + 彩色渐变的配色：
+ * - 主背景 浅蓝白，卡片纯白，文字深蓝黑（对比清晰）
+ * - 主色 靛蓝，状态色 青绿/琥珀/玫红
+ */
+private val IptvColorScheme = lightColorScheme(
+    primary = Color(0xFF5B7BFA),        // 靛蓝
+    onPrimary = Color.White,
+    primaryContainer = Color(0xFFDEE7FF),
+    onPrimaryContainer = Color(0xFF1B2A6B),
+    secondary = Color(0xFF00C2A8),      // 青绿（流畅状态）
+    onSecondary = Color.White,
+    tertiary = Color(0xFFFFA940),       // 琥珀（一般状态）
+    onTertiary = Color.White,
+    background = Color(0xFFF5F7FF),     // 浅蓝白
+    onBackground = Color(0xFF1C2230),
+    surface = Color.White,
+    onSurface = Color(0xFF1C2230),
+    surfaceVariant = Color(0xFFE9EDF9),
+    onSurfaceVariant = Color(0xFF6B7486),
+    outline = Color(0xFFD6DBE8),
+    error = Color(0xFFFF4757),
+    onError = Color.White
+)
+
+private val IptvTypography = Typography(
+    headlineLarge = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.SansSerif),
+    headlineMedium = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.SansSerif),
+    titleLarge = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.SansSerif),
+    bodyLarge = TextStyle(fontSize = 16.sp),
+    bodyMedium = TextStyle(fontSize = 14.sp),
+    labelLarge = TextStyle(fontSize = 15.sp, fontWeight = FontWeight.Medium)
+)
+
+private val IptvShapes = Shapes(
+    small = RoundedCornerShape(8.dp),
+    medium = RoundedCornerShape(12.dp),
+    large = RoundedCornerShape(16.dp)
+)
+
+/**
+ * 整个软件的配色主题：白色主调 + 彩色渐变。
+ *
+ * fontScale：全局字体缩放（老人模式的三级字体）。
+ * 原理：Compose 里所有尺寸（sp/dp）最终都经过 Density 换算成像素，
+ * 这里整体放大 Density，所有文字和按钮都按比例变大，
+ * 不用逐个修改每个 Text 的 fontSize。
+ * 标准 = 1.0 倍，大 = 1.25 倍，特大 = 1.5 倍。
+ */
+@Composable
+fun IptvPlayerTheme(fontScale: Float = 1.0f, content: @Composable () -> Unit) {
+    val baseDensity = LocalDensity.current
+    CompositionLocalProvider(
+        LocalDensity provides Density(
+            density = baseDensity.density,
+            fontScale = baseDensity.fontScale * fontScale
+        )
+    ) {
+        MaterialTheme(
+            colorScheme = IptvColorScheme,
+            typography = IptvTypography,
+            shapes = IptvShapes,
+            content = content
+        )
+    }
+}
