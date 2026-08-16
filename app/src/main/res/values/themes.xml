@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- 整个软件的主题：黑底、无系统标题栏（界面全部由 Compose 绘制） -->
+    <style name="Theme.IptvPlayer" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@android:color/black</item>
+    </style>
+</resources>

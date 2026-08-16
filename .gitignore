@@ -1,0 +1,24 @@
+# 构建产物
+/build
+/app/build
+/.gradle
+/.kotlin
+
+# IDE
+/.idea
+*.iml
+
+# 本机环境
+/local.properties
+.DS_Store
+
+# 签名文件与密码（严禁入库：泄露后他人可冒名发布升级包）
+/keystore
+keystore.properties
+
+# 原生构建
+.externalNativeBuild
+.cxx
+
+# 本地工具
+/.zcode

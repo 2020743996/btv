@@ -1,0 +1,644 @@
+package com.example.iptvplayer
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.Intent
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.view.KeyEvent
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.compose.ui.viewinterop.AndroidView
+import androidx.media3.common.MediaItem
+import androidx.media3.common.PlaybackException
+import androidx.media3.common.Player
+import androidx.media3.common.util.UnstableApi
+import androidx.media3.datasource.DefaultDataSource
+import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.ui.AspectRatioFrameLayout
+import androidx.media3.ui.PlayerView
+
+enum class PlayerUiState { LOADING, PLAYING, ERROR }
+
+class PlayerActivity : ComponentActivity() {
+    private val mainHandler = Handler(Looper.getMainLooper())
+    private var player: ExoPlayer? = null
+    private var playerState by mutableStateOf(PlayerUiState.LOADING)
+    private var errorMessage by mutableStateOf<String?>(null)
+    private var loadingMessage by mutableStateOf("正在连接直播源…")
+    private var channelInfoVisible by mutableStateOf(true)
+
+    private var urls: List<String> = emptyList()
+    private var currentLineIndex = 0
+    private var channelName by mutableStateOf("")
+    private var channelIndex = -1
+    private var totalChannels = 0
+    private var channelTvgIds: List<String> = emptyList()
+
+    // 左侧悬浮频道选择面板：DPAD_LEFT 呼出，面板内上下移动、OK 播放、BACK/LEFT 关闭。
+    private var channelListVisible by mutableStateOf(false)
+    private var channelListSelection by mutableIntStateOf(0)
+
+    private val playbackTimeout = Runnable {
+        if (playerState == PlayerUiState.LOADING) {
+            tryNextLine("连接超时")
+        }
+    }
+
+    private val hideChannelInfo = Runnable {
+        channelInfoVisible = false
+    }
+
+    @UnstableApi
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        // 播放页沉浸式全屏：隐藏系统栏（状态栏/导航栏），滑动可临时呼出。
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        WindowInsetsControllerCompat(window, window.decorView).apply {
+            hide(WindowInsetsCompat.Type.systemBars())
+            systemBarsBehavior = WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+        }
+
+        urls = intent.getStringArrayListExtra(EXTRA_URLS) ?: emptyList()
+        channelName = intent.getStringExtra(EXTRA_NAME) ?: ""
+
+        val allChannels = ChannelCache.channels
+        totalChannels = allChannels.size
+        channelIndex = allChannels.indexOfFirst { it.name == channelName }
+        val initialChannel = allChannels.getOrNull(channelIndex)
+        channelTvgIds = initialChannel?.tvgIds ?: emptyList()
+
+        val httpFactory = DefaultHttpDataSource.Factory()
+            .setUserAgent(APP_USER_AGENT)
+            .setConnectTimeoutMs(10_000)
+            .setReadTimeoutMs(15_000)
+            .setAllowCrossProtocolRedirects(true)
+        val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
+        val loadControl = DefaultLoadControl.Builder()
+            .setBufferDurationsMs(
+                2_500,  // 直播保留较短缓冲，换台更快
+                15_000,
+                800,
+                1_500
+            )
+            .build()
+
+        player = ExoPlayer.Builder(this)
+            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setLoadControl(loadControl)
+            .build()
+            .also { exoPlayer ->
+                exoPlayer.setHandleAudioBecomingNoisy(true)
+                exoPlayer.addListener(object : Player.Listener {
+                    override fun onPlaybackStateChanged(state: Int) {
+                        when (state) {
+                            Player.STATE_READY -> {
+                                cancelPlaybackTimeout()
+                                playerState = PlayerUiState.PLAYING
+                                showChannelInfoBriefly()
+                            }
+                            Player.STATE_BUFFERING -> if (playerState != PlayerUiState.ERROR) {
+                                playerState = PlayerUiState.LOADING
+                                mainHandler.removeCallbacks(playbackTimeout)
+                                mainHandler.postDelayed(playbackTimeout, PLAYBACK_TIMEOUT_MS)
+                            }
+                            Player.STATE_ENDED -> tryNextLine("直播已中断")
+                            Player.STATE_IDLE -> Unit
+                        }
+                    }
+
+                    override fun onPlayerError(error: PlaybackException) {
+                        AppLog.log("$channelName 线路 ${currentLineIndex + 1} 播放错误：${error.errorCodeName}")
+                        tryNextLine("线路不可用")
+                    }
+                })
+            }
+
+        setContent {
+            IptvPlayerTheme(fontScale = fontScaleFor(getFontSize(this))) {
+                PlayerScreen(
+                    player = player,
+                    playerState = playerState,
+                    errorMessage = errorMessage,
+                    channelName = channelName,
+                    channelPosition = if (channelIndex >= 0) "${channelIndex + 1}/$totalChannels" else "",
+                    channelTvgIds = channelTvgIds,
+                    loadingMessage = loadingMessage,
+                    linePosition = if (urls.isEmpty()) "" else "线路 ${currentLineIndex + 1}/${urls.size}",
+                    channelInfoVisible = channelInfoVisible,
+                    channels = allChannels,
+                    channelListVisible = channelListVisible,
+                    channelListSelection = channelListSelection,
+                    playingIndex = channelIndex,
+                    onChannelSelected = { index -> playChannelAt(index) },
+                    onRetry = { startFromFirst() },
+                    onBack = { finish() }
+                )
+            }
+        }
+
+        startFromFirst()
+    }
+
+    private fun switchChannel(delta: Int) {
+        val allChannels = ChannelCache.channels
+        if (allChannels.isEmpty()) return
+
+        val current = if (channelIndex in allChannels.indices) channelIndex else 0
+        val newIndex = ((current + delta) % allChannels.size + allChannels.size) % allChannels.size
+        val newChannel = allChannels[newIndex]
+        channelIndex = newIndex
+        channelName = newChannel.name
+        channelTvgIds = newChannel.tvgIds
+        urls = newChannel.urls
+        totalChannels = allChannels.size
+        addRecentChannel(this, newChannel.name)
+        AppLog.log("换台：$channelName（${channelIndex + 1}/$totalChannels）")
+        startFromFirst()
+    }
+
+    // PlayerView 会优先消费方向键，因此需要在 Activity 最外层拦截换台按键。
+    @SuppressLint("RestrictedApi")
+    override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
+
+        // 悬浮频道面板打开时：方向键只移动选择，OK 播放，BACK/LEFT 关闭。
+        if (channelListVisible) {
+            when (event.keyCode) {
+                KeyEvent.KEYCODE_DPAD_UP -> {
+                    if (event.repeatCount == 0) channelListSelection = (channelListSelection - 1).coerceAtLeast(0)
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_DOWN -> {
+                    if (event.repeatCount == 0 && channelListSelection < ChannelCache.channels.lastIndex) {
+                        channelListSelection++
+                    }
+                    return true
+                }
+                KeyEvent.KEYCODE_DPAD_CENTER, KeyEvent.KEYCODE_ENTER, KeyEvent.KEYCODE_NUMPAD_ENTER -> {
+                    playChannelAt(channelListSelection)
+                    return true
+                }
+                KeyEvent.KEYCODE_BACK, KeyEvent.KEYCODE_DPAD_LEFT -> {
+                    channelListVisible = false
+                    return true
+                }
+                else -> return true // 面板打开时其余按键一律吃掉，避免误触
+            }
+        }
+
+        when (event.keyCode) {
+            KeyEvent.KEYCODE_BACK -> {
+                finish()
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_LEFT -> {
+                if (event.repeatCount == 0) openChannelList()
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_UP -> {
+                if (event.repeatCount == 0) switchChannel(-1)
+                return true
+            }
+            KeyEvent.KEYCODE_DPAD_DOWN -> {
+                if (event.repeatCount == 0) switchChannel(1)
+                return true
+            }
+            KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_MENU -> {
+                showChannelInfoBriefly()
+                return true
+            }
+        }
+        return super.dispatchKeyEvent(event)
+    }
+
+    /** 呼出左侧悬浮频道面板，选中项定位到当前播放的频道。 */
+    private fun openChannelList() {
+        val allChannels = ChannelCache.channels
+        if (allChannels.isEmpty()) return
+        channelListSelection = channelIndex.coerceIn(0, allChannels.lastIndex)
+        channelListVisible = true
+    }
+
+    /** 播放悬浮面板中选中的频道，并关闭面板。 */
+    private fun playChannelAt(index: Int) {
+        val allChannels = ChannelCache.channels
+        if (index !in allChannels.indices) return
+        channelListVisible = false
+        val newChannel = allChannels[index]
+        channelIndex = index
+        channelName = newChannel.name
+        channelTvgIds = newChannel.tvgIds
+        urls = newChannel.urls
+        totalChannels = allChannels.size
+        addRecentChannel(this, newChannel.name)
+        AppLog.log("选台：$channelName（${channelIndex + 1}/$totalChannels）")
+        startFromFirst()
+        // 切换后短暂显示新频道信息，让用户确认已换台。
+        showChannelInfoBriefly()
+    }
+
+    private fun startFromFirst() {
+        currentLineIndex = 0
+        if (urls.isEmpty()) {
+            showPlaybackError("这个频道暂时没有可用线路，请稍后再试")
+            return
+        }
+        startPlayback(urls.first(), "正在连接直播源…")
+    }
+
+    private fun tryNextLine(reason: String) {
+        cancelPlaybackTimeout()
+        if (currentLineIndex + 1 < urls.size) {
+            currentLineIndex++
+            AppLog.log("$channelName $reason，切换到线路 ${currentLineIndex + 1}/${urls.size}")
+            startPlayback(
+                urls[currentLineIndex],
+                "$reason，正在尝试备用线路…"
+            )
+        } else {
+            showPlaybackError("当前频道的 ${urls.size} 条线路均无法播放，请稍后再试")
+        }
+    }
+
+    private fun startPlayback(url: String, message: String) {
+        val exoPlayer = player ?: return
+        cancelPlaybackTimeout()
+        playerState = PlayerUiState.LOADING
+        errorMessage = null
+        loadingMessage = message
+        channelInfoVisible = true
+
+        val mediaItem = MediaItem.Builder()
+            .setUri(url)
+            .setLiveConfiguration(
+                MediaItem.LiveConfiguration.Builder()
+                    .setTargetOffsetMs(3_500)
+                    .setMinPlaybackSpeed(0.97f)
+                    .setMaxPlaybackSpeed(1.03f)
+                    .build()
+            )
+            .build()
+        exoPlayer.stop()
+        exoPlayer.clearMediaItems()
+        exoPlayer.setMediaItem(mediaItem)
+        exoPlayer.prepare()
+        exoPlayer.playWhenReady = true
+        mainHandler.postDelayed(playbackTimeout, PLAYBACK_TIMEOUT_MS)
+    }
+
+    private fun showPlaybackError(message: String) {
+        cancelPlaybackTimeout()
+        player?.stop()
+        errorMessage = message
+        playerState = PlayerUiState.ERROR
+    }
+
+    private fun showChannelInfoBriefly() {
+        channelInfoVisible = true
+        mainHandler.removeCallbacks(hideChannelInfo)
+        mainHandler.postDelayed(hideChannelInfo, CHANNEL_INFO_DURATION_MS)
+    }
+
+    private fun cancelPlaybackTimeout() {
+        mainHandler.removeCallbacks(playbackTimeout)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        if (playerState != PlayerUiState.ERROR) {
+            player?.play()
+            if (playerState == PlayerUiState.LOADING) {
+                mainHandler.removeCallbacks(playbackTimeout)
+                mainHandler.postDelayed(playbackTimeout, PLAYBACK_TIMEOUT_MS)
+            }
+        }
+    }
+
+    override fun onStop() {
+        cancelPlaybackTimeout()
+        mainHandler.removeCallbacks(hideChannelInfo)
+        player?.pause()
+        super.onStop()
+    }
+
+    override fun onDestroy() {
+        mainHandler.removeCallbacksAndMessages(null)
+        player?.release()
+        player = null
+        super.onDestroy()
+    }
+
+    companion object {
+        private const val EXTRA_URLS = "channel_urls"
+        private const val EXTRA_NAME = "channel_name"
+        private const val PLAYBACK_TIMEOUT_MS = 12_000L
+        private const val CHANNEL_INFO_DURATION_MS = 4_000L
+
+        fun createIntent(context: Context, channel: Channel): Intent =
+            Intent(context, PlayerActivity::class.java)
+                .putStringArrayListExtra(EXTRA_URLS, ArrayList(channel.urls))
+                .putExtra(EXTRA_NAME, channel.name)
+    }
+}
+
+@UnstableApi
+@Composable
+fun PlayerScreen(
+    player: ExoPlayer?,
+    playerState: PlayerUiState,
+    errorMessage: String?,
+    channelName: String,
+    channelPosition: String,
+    channelTvgIds: List<String>,
+    loadingMessage: String,
+    linePosition: String,
+    channelInfoVisible: Boolean,
+    channels: List<Channel>,
+    channelListVisible: Boolean,
+    channelListSelection: Int,
+    playingIndex: Int,
+    onChannelSelected: (Int) -> Unit,
+    onRetry: () -> Unit,
+    onBack: () -> Unit
+) {
+    Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        AndroidView(
+            modifier = Modifier.fillMaxSize(),
+            factory = { context ->
+                PlayerView(context).apply {
+                    this.player = player
+                    keepScreenOn = true
+                    resizeMode = AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    controllerShowTimeoutMs = 3_000
+                    controllerAutoShow = false
+                    setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                }
+            },
+            update = { view ->
+                view.player = player
+                view.useController = playerState == PlayerUiState.PLAYING
+            }
+        )
+
+        when (playerState) {
+            PlayerUiState.LOADING -> Box(
+                modifier = Modifier.fillMaxSize().background(Color(0xB3000000)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.width(36.dp).height(36.dp),
+                        color = MaterialTheme.colorScheme.primary,
+                        strokeWidth = 3.dp
+                    )
+                    Spacer(modifier = Modifier.height(18.dp))
+                    Text(
+                        channelName,
+                        color = Color(0xFFEDE4D3),
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(loadingMessage, color = Color(0xFFB5A99A), fontSize = 14.sp)
+                    if (linePosition.isNotEmpty()) {
+                        Text(linePosition, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
+                    }
+                }
+            }
+
+            PlayerUiState.ERROR -> Box(
+                modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text("暂时无法播放", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.error)
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        errorMessage ?: "未知错误",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 15.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.padding(horizontal = 48.dp)
+                    )
+                    Spacer(modifier = Modifier.height(7.dp))
+                    Text(channelName, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
+                    Spacer(modifier = Modifier.height(22.dp))
+                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                        ActionButton("重新尝试", highlighted = true, onClick = onRetry)
+                        ActionButton("返回频道", onClick = onBack)
+                    }
+                }
+            }
+
+            PlayerUiState.PLAYING -> if (channelInfoVisible) {
+                val nowPlaying = EpgCache.currentProgramme(channelTvgIds)?.title
+                Column(
+                    modifier = Modifier
+                        .padding(20.dp)
+                        .background(Color(0xD925201B), MaterialTheme.shapes.medium)
+                        .padding(horizontal = 16.dp, vertical = 11.dp)
+                        .width(360.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            channelName,
+                            color = Color(0xFFEDE4D3),
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Text(channelPosition, color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
+                    }
+                    Text(
+                        nowPlaying ?: linePosition,
+                        color = Color(0xFFB5A99A),
+                        fontSize = 13.sp,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+            }
+        }
+
+        // 左侧悬浮频道列表：覆盖在画面上选台，不用返回列表页。
+        if (channelListVisible) {
+            ChannelSelectOverlay(
+                channels = channels,
+                selectedIndex = channelListSelection,
+                playingIndex = playingIndex,
+                onChannelSelected = onChannelSelected
+            )
+        }
+    }
+}
+
+/**
+ * 播放页左侧悬浮的频道选择面板。
+ * 选择由 Activity 的 dispatchKeyEvent 驱动（方向键移动、OK 播放、BACK/LEFT 关闭），
+ * 这里只负责渲染：当前播放频道带 ▶ 标记，选中项高亮。
+ */
+@Composable
+fun ChannelSelectOverlay(
+    channels: List<Channel>,
+    selectedIndex: Int,
+    playingIndex: Int,
+    onChannelSelected: (Int) -> Unit
+) {
+    val listState = rememberLazyListState()
+    // 选中项变化时滚动到可见位置（居中附近）。用无动画的 scrollToItem，
+    // 避免逐帧动画在低端/模拟器环境造成主线程卡顿。
+    LaunchedEffect(selectedIndex) {
+        listState.scrollToItem((selectedIndex - 4).coerceAtLeast(0))
+    }
+
+    // 手机窄屏按屏幕比例取宽，电视/平板用固定宽度（窄一点，少遮挡视频）。
+    val panelWidthModifier = if (rememberWindowType() == WindowType.COMPACT) {
+        Modifier.fillMaxWidth(0.88f)
+    } else {
+        Modifier.width(320.dp)
+    }
+    Column(
+        modifier = Modifier
+            .fillMaxHeight()
+            .then(panelWidthModifier)
+            .background(Color(0xFFF7F9FF))
+            .padding(vertical = 14.dp)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                "频道列表",
+                style = MaterialTheme.typography.titleLarge.copy(brush = BrandGradient)
+            )
+            Spacer(modifier = Modifier.weight(1f))
+            Text(
+                "${channels.size} 个频道",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp
+            )
+        }
+        Spacer(modifier = Modifier.height(6.dp))
+        LazyColumn(
+            state = listState,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp)
+        ) {
+            // 频道列表在播放过程中是静态的，用索引做 key 即可，避免重名频道引发冲突。
+            itemsIndexed(channels) { index, channel ->
+                val selected = index == selectedIndex
+                val playing = index == playingIndex
+                // EPG 节目名：面板打开时显示"正在播什么"。
+                val nowPlaying = remember(channel) { currentProgrammeTitle(channel) }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 52.dp)
+                        .clickable { onChannelSelected(index) }
+                        .background(
+                            if (selected) BrandGradient else SolidColor(Color.Transparent),
+                            MaterialTheme.shapes.small
+                        )
+                        .border(
+                            2.dp,
+                            if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            MaterialTheme.shapes.small
+                        )
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        if (playing) "▶" else (index + 1).toString().padStart(3, '0'),
+                        color = when {
+                            playing -> MaterialTheme.colorScheme.primary
+                            selected -> Color.White
+                            else -> MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                        fontSize = 11.sp,
+                        modifier = Modifier.width(30.dp)
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            channel.name,
+                            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Medium,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                        if (nowPlaying != null) {
+                            Text(
+                                nowPlaying,
+                                color = if (selected) Color.White.copy(alpha = 0.85f)
+                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
+            }
+        }
+        Spacer(modifier = Modifier.height(8.dp))
+        Text(
+            "方向键选择 · OK 播放 · BACK 关闭",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontSize = 11.sp,
+            textAlign = TextAlign.Center,
+            modifier = Modifier.fillMaxWidth()
+        )
+    }
+}
