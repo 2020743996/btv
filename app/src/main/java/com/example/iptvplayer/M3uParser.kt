@@ -19,14 +19,16 @@ data class Channel(
     val group: String,       // 分组，例如 "央视"，用于列表里归类
     val urls: List<String>,  // 所有线路的播放地址，例如 ["https://a.m3u8", "https://b.m3u8"]
     // 每条线路的检测结果（null = 还没测速）。
-    // 测速后 urls 会按质量重新排序：最快的在前，失效的排最后
+    // 测速后 urls 会按分辨率和网络质量重新排序：高清稳定线路在前，失效线路在后。
     val lineQuality: List<LineQuality>? = null,
     // EPG 标识列表：合并自所有源（tvg-id 或 tvg-name 属性）。
     // 不同源给同一频道的标识可能不同（如 "CCTV1" vs "CCTV1.us@SD"），
     // 全部保留，匹配节目单时任一命中即可
     val tvgIds: List<String> = emptyList(),
     // M3U 的 tvg-logo 地址；为空或加载失败时界面显示频道缩写占位。
-    val logoUrl: String? = null
+    val logoUrl: String? = null,
+    // 每条 URL 在原始 M3U 中对应的频道名/tvg-id，用于识别 CCTV4K 等线路级画质标记。
+    val urlQualityHints: Map<String, String> = emptyMap()
 )
 
 /**
@@ -93,13 +95,17 @@ fun parseM3u(text: String): List<Channel> {
 
             // 情况 3：其他行都当作播放地址，和之前记住的名字配对成一个频道
             else -> {
+                val channelName = pendingName ?: "未命名频道"
+                val qualityHint = listOfNotNull(channelName, pendingTvgId)
+                    .joinToString(separator = " ")
                 channels.add(
                     Channel(
-                        name = pendingName ?: "未命名频道",
+                        name = channelName,
                         group = pendingGroup ?: "未分组",
                         urls = listOf(line), // 单个源解析出来，每个频道只有这一条线路
                         tvgIds = if (pendingTvgId != null) listOf(pendingTvgId!!) else emptyList(),
-                        logoUrl = pendingLogoUrl
+                        logoUrl = pendingLogoUrl,
+                        urlQualityHints = mapOf(line to qualityHint)
                     )
                 )
                 // 配对完就清空，防止漏掉 EXTINF 时把旧名字错配给下一个频道
@@ -167,10 +173,12 @@ fun mergeChannels(allChannels: List<Channel>): List<Channel> {
             // EPG 标识也合并去重（不同源给同一频道的标识可能不同）
             val newUrls = existing.urls + channel.urls.filter { it !in existing.urls }
             val newTvgIds = existing.tvgIds + channel.tvgIds.filter { it !in existing.tvgIds }
+            val newQualityHints = channel.urlQualityHints + existing.urlQualityHints
             merged[key] = existing.copy(
                 urls = newUrls,
                 tvgIds = newTvgIds,
-                logoUrl = existing.logoUrl ?: channel.logoUrl
+                logoUrl = existing.logoUrl ?: channel.logoUrl,
+                urlQualityHints = newQualityHints
             )
         }
     }

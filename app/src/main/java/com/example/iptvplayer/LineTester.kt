@@ -62,7 +62,11 @@ suspend fun testChannel(
     // 并发检测所有线路
     val results = coroutineScope {
         channel.urls.map { url ->
-            async { requestLimit.withPermit { testLine(context, url) } }
+            async {
+                requestLimit.withPermit {
+                    testLine(context, url, channel.urlQualityHints[url])
+                }
+            }
         }.awaitAll()
     }
 
@@ -106,8 +110,12 @@ suspend fun testAllChannels(
     return result
 }
 
-/** 检测一条线路：读取有限清单内容，结合分辨率、实测和历史记录得出质量。 */
-suspend fun testLine(context: Context, url: String): LineQuality = withContext(Dispatchers.IO) {
+/** 检测一条线路：读取有限清单内容，结合线路自己的 M3U 提示、实测和历史记录得出质量。 */
+suspend fun testLine(
+    context: Context,
+    url: String,
+    resolutionHint: String? = null
+): LineQuality = withContext(Dispatchers.IO) {
     val request = Request.Builder()
         .url(url)
         .header("User-Agent", APP_USER_AGENT)
@@ -128,7 +136,11 @@ suspend fun testLine(context: Context, url: String): LineQuality = withContext(D
                     recordLineResult(context, url, success = true)
                     // 打分：满分 100，延迟越高扣越多（每 10ms 扣 1 分，最多扣 80）
                     val score = (100 - (latency / 10).toInt()).coerceIn(0, 100)
-                    val resolution = detectStreamResolution(probe, response.request.url.toString())
+                    val resolution = detectStreamResolution(
+                        probe = probe,
+                        finalUrl = response.request.url.toString(),
+                        hints = listOfNotNull(resolutionHint)
+                    )
                     LineQuality(url, true, latency, score, resolution)
                 } else {
                     // 有响应但没内容：也算失败

@@ -15,16 +15,25 @@ data class StreamResolution(val width: Int, val height: Int) {
 
 private val DIMENSION_PATTERN = Regex("(?i)(?:RESOLUTION\\s*=\\s*)?(\\d{3,5})x(\\d{3,5})")
 private val HEIGHT_PATTERN = Regex("(?i)(?:^|[^0-9])(2160|1440|1080|720|576|480|360)p(?:[^0-9]|$)")
-private val FOUR_K_PATTERN = Regex("(?i)(?:^|[^a-z0-9])(4k|uhd)(?:[^a-z0-9]|$)")
-private val FULL_HD_PATTERN = Regex("(?i)(?:^|[^a-z0-9])fhd(?:[^a-z0-9]|$)")
+// 允许 CCTV4K / liveuhd 这类紧凑写法，但排除 14k、4kplus 等容易误判的片段。
+private val FOUR_K_PATTERN = Regex("(?i)(?<!\\d)(?:4k|uhd)(?![a-z0-9])")
+private val FULL_HD_PATTERN = Regex("(?i)fhd(?![a-z0-9])")
 
-/** 从 HLS 清单和 URL 提示中识别最高视频分辨率。 */
-internal fun detectStreamResolution(probe: ByteArray, finalUrl: String): StreamResolution? {
+/** 从 HLS 清单、最终 URL 和该线路自己的 M3U 标签中识别最高视频分辨率。 */
+internal fun detectStreamResolution(
+    probe: ByteArray,
+    finalUrl: String,
+    hints: List<String> = emptyList()
+): StreamResolution? {
     val manifestText = probe.toString(Charsets.UTF_8)
     val candidates = buildList {
         addAll(parseDimensions(manifestText))
         addAll(parseDimensions(finalUrl))
         inferNamedResolution(finalUrl)?.let(::add)
+        hints.forEach { hint ->
+            addAll(parseDimensions(hint))
+            inferNamedResolution(hint)?.let(::add)
+        }
     }
     return candidates.maxByOrNull { it.pixelCount }
 }

@@ -23,6 +23,10 @@ class M3uParserTest {
         assertEquals(listOf("cctv1"), channels[0].tvgIds)
         assertEquals("https://example.com/cctv1.png", channels[0].logoUrl)
         assertEquals(listOf("https://example.com/cctv1.m3u8"), channels[0].urls)
+        assertEquals(
+            "CCTV-1 高清 cctv1",
+            channels[0].urlQualityHints["https://example.com/cctv1.m3u8"]
+        )
     }
 
     @Test
@@ -56,6 +60,23 @@ class M3uParserTest {
         assertEquals(listOf("https://a/live.m3u8", "https://b/live.m3u8"), merged.urls)
         assertEquals(listOf("cctv1", "cctv-one"), merged.tvgIds)
         assertEquals("https://example.com/cctv1.png", merged.logoUrl)
+    }
+
+    @Test
+    fun mergeChannels_preservesPerLine4kHint() {
+        val channels = parseM3u(
+            """
+                #EXTM3U
+                #EXTINF:-1,CCTV-1
+                https://example.com/hd.m3u8
+                #EXTINF:-1,CCTV-1 4K
+                https://example.com/uhd.m3u8
+            """.trimIndent()
+        )
+
+        val merged = mergeChannels(channels).single()
+
+        assertEquals("CCTV-1 4K", merged.urlQualityHints["https://example.com/uhd.m3u8"])
     }
 
     @Test

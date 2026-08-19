@@ -1,5 +1,23 @@
 # Release Notes
 
+## v1.8.2 - 2026-08-20
+
+### 4K 识别修复
+
+- 修复 `cctv4k.m3u8`、`liveuhd` 等画质标记紧贴频道名时无法识别的问题。
+- M3U 解析现在会为每条 URL 保留其原始频道名和 `tvg-id`，支持从 `CCTV4K`、`2160p` 等线路级标签识别 4K。
+- 多个同名频道合并后仍保留各线路自己的画质提示，不会把一条 4K 标签错误套到所有备用线路。
+- 4K 线路会排在 1080p、720p 和未知分辨率线路之前；同分辨率仍按网络质量排序。
+- 该增强不额外下载视频分片，不会显著拖慢批量测速。
+
+### 验证
+
+- 新增紧凑 4K URL、M3U 线路标签、合并保留标签和 4K 排序回归测试。
+- `./gradlew testDebugUnitTest`
+- `./gradlew lintDebug`
+- `./gradlew assembleDebug`
+- `./gradlew assembleRelease`
+
 ## v1.8.1 - 2026-08-20
 
 ### 频道源操作位置
