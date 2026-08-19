@@ -53,6 +53,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.async
@@ -96,6 +97,7 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+    var sourceMissing by remember { mutableStateOf(false) }
     var groupedChannels by remember { mutableStateOf<Map<String, List<Channel>>>(emptyMap()) }
     var favorites by remember { mutableStateOf(getFavorites(context)) }
     var elderMode by remember { mutableStateOf(isElderMode(context)) }
@@ -150,13 +152,14 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
 
     LaunchedEffect(reloadKey) {
         errorMessage = null
+        sourceMissing = false
         elderMode = isElderMode(context)
         favorites = getFavorites(context)
         recentChannels = getRecentChannels(context)
 
         val sourceUrls = getM3uUrls(context)
         if (sourceUrls.isEmpty()) {
-            errorMessage = "还没有配置频道源，请到「设置 → 管理员模式」中添加 M3U 地址"
+            sourceMissing = true
             isLoading = false
             return@LaunchedEffect
         }
@@ -228,6 +231,9 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
     ) {
         when {
             isLoading -> LoadingScreen("正在整理频道…")
+            sourceMissing -> FirstRunScreen(
+                onAddSource = { context.startActivity(Intent(context, AddressActivity::class.java)) }
+            )
             errorMessage != null -> ErrorScreen(
                 errorMessage!!,
                 onRetry = onReload,
@@ -252,6 +258,33 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
                 onOpenSearch = { context.startActivity(Intent(context, SearchActivity::class.java)) },
                 onOpenSettings = { context.startActivity(Intent(context, SettingsActivity::class.java)) }
             )
+        }
+    }
+}
+
+@Composable
+fun FirstRunScreen(onAddSource: () -> Unit) {
+    Box(
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 28.dp)
+        ) {
+            Text(
+                "开始使用 btv",
+                style = MaterialTheme.typography.headlineLarge.copy(brush = BrandGradient)
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            Text(
+                "添加一个 M3U 频道源，即可加载频道并开始播放。",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 15.sp,
+                textAlign = TextAlign.Center
+            )
+            Spacer(modifier = Modifier.height(24.dp))
+            ActionButton("添加频道源", highlighted = true, onClick = onAddSource)
         }
     }
 }

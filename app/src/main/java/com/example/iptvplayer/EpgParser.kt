@@ -37,6 +37,12 @@ data class Programme(
     val title: String
 )
 
+/** 一个频道此刻的节目状态：正在播的节目，以及紧随其后的下一档。 */
+data class ProgrammeSchedule(
+    val current: Programme?,
+    val next: Programme?
+)
+
 /**
  * 解析 XMLTV 文本，返回所有节目。
  * 用安卓自带的 XmlPullParser 解析 XML（不用正则——XML 结构复杂，正则容易出错）。
@@ -102,10 +108,34 @@ private fun parseXmltvTime(text: String): Date? {
  * 找不到就返回 null（界面不显示）。
  */
 fun getCurrentProgramme(programmes: List<Programme>, tvgIds: List<String>, now: Date): Programme? {
-    if (tvgIds.isEmpty()) return null
-    return programmes.firstOrNull { programme ->
-        programme.channelId in tvgIds && now in programme.start..programme.end
+    return getProgrammeSchedule(programmes, tvgIds, now).current
+}
+
+/**
+ * 同时找出当前节目和下一节目。节目时间按 [开始, 结束) 处理，避免整点交界时
+ * 上一档和下一档同时被判定为正在播放。
+ */
+fun getProgrammeSchedule(
+    programmes: List<Programme>,
+    tvgIds: List<String>,
+    now: Date
+): ProgrammeSchedule {
+    if (tvgIds.isEmpty()) return ProgrammeSchedule(null, null)
+    val channelIds = tvgIds.toHashSet()
+    var current: Programme? = null
+    var next: Programme? = null
+
+    for (programme in programmes) {
+        if (programme.channelId !in channelIds) continue
+        val isCurrent = !now.before(programme.start) && now.before(programme.end)
+        if (isCurrent && (current == null || programme.start.before(current.start))) {
+            current = programme
+        }
+        if (programme.start.after(now) && (next == null || programme.start.before(next.start))) {
+            next = programme
+        }
     }
+    return ProgrammeSchedule(current, next)
 }
 
 /**
@@ -139,14 +169,30 @@ object EpgCache {
         System.currentTimeMillis() - loadedAtMillis >= EPG_TTL_MS
 
     /** 只扫描当前频道的节目，不再为列表中的每一行遍历整份 EPG。 */
-    fun currentProgramme(tvgIds: List<String>, now: Date = Date()): Programme? {
+    fun schedule(tvgIds: List<String>, now: Date = Date()): ProgrammeSchedule {
+        if (tvgIds.isEmpty()) return ProgrammeSchedule(null, null)
+        var current: Programme? = null
+        var next: Programme? = null
         for (tvgId in tvgIds) {
-            val match = programmesByChannel[tvgId]
-                ?.firstOrNull { now in it.start..it.end }
-            if (match != null) return match
+            val programmes = programmesByChannel[tvgId].orEmpty()
+            val match = getProgrammeSchedule(programmes, listOf(tvgId), now)
+            if (match.current != null &&
+                (current == null || match.current.start.before(current.start))
+            ) {
+                current = match.current
+            }
+            if (match.next != null && (next == null || match.next.start.before(next.start))) {
+                next = match.next
+            }
         }
-        return null
+        return ProgrammeSchedule(current, next)
     }
+
+    fun currentProgramme(tvgIds: List<String>, now: Date = Date()): Programme? =
+        schedule(tvgIds, now).current
+
+    fun nextProgramme(tvgIds: List<String>, now: Date = Date()): Programme? =
+        schedule(tvgIds, now).next
 }
 
 /**

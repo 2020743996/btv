@@ -63,6 +63,9 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 enum class PlayerUiState { LOADING, PLAYING, ERROR }
 
@@ -80,6 +83,8 @@ class PlayerActivity : ComponentActivity() {
     private var channelIndex = -1
     private var totalChannels = 0
     private var channelTvgIds: List<String> = emptyList()
+    private var currentAttemptUrl: String? = null
+    private var currentAttemptLastResult: Boolean? = null
 
     // 左侧悬浮频道选择面板：DPAD_LEFT 呼出，面板内上下移动、OK 播放、BACK/LEFT 关闭。
     private var channelListVisible by mutableStateOf(false)
@@ -141,6 +146,7 @@ class PlayerActivity : ComponentActivity() {
                         when (state) {
                             Player.STATE_READY -> {
                                 cancelPlaybackTimeout()
+                                recordCurrentAttempt(success = true)
                                 playerState = PlayerUiState.PLAYING
                                 showChannelInfoBriefly()
                             }
@@ -296,6 +302,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun tryNextLine(reason: String) {
         cancelPlaybackTimeout()
+        recordCurrentAttempt(success = false)
         if (currentLineIndex + 1 < urls.size) {
             currentLineIndex++
             AppLog.log("$channelName $reason，切换到线路 ${currentLineIndex + 1}/${urls.size}")
@@ -315,6 +322,8 @@ class PlayerActivity : ComponentActivity() {
         errorMessage = null
         loadingMessage = message
         channelInfoVisible = true
+        currentAttemptUrl = url
+        currentAttemptLastResult = null
 
         val mediaItem = MediaItem.Builder()
             .setUri(url)
@@ -332,6 +341,15 @@ class PlayerActivity : ComponentActivity() {
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
         mainHandler.postDelayed(playbackTimeout, PLAYBACK_TIMEOUT_MS)
+    }
+
+    /** 每次播放尝试只记一次结果，避免错误回调和超时回调重复累计。 */
+    private fun recordCurrentAttempt(success: Boolean) {
+        val url = currentAttemptUrl ?: return
+        if (currentAttemptLastResult == success) return
+        currentAttemptLastResult = success
+        recordLineResult(this, url, success)
+        AppLog.log("$channelName 线路 ${currentLineIndex + 1}${if (success) "播放成功" else "播放失败，已记录"}")
     }
 
     private fun showPlaybackError(message: String) {
@@ -409,6 +427,20 @@ fun PlayerScreen(
     onRetry: () -> Unit,
     onBack: () -> Unit
 ) {
+    var epgRefreshTick by remember { mutableIntStateOf(0) }
+    LaunchedEffect(channelTvgIds, channelInfoVisible, channelListVisible) {
+        if (!channelInfoVisible && !channelListVisible) return@LaunchedEffect
+        // EPG 可能在进入播放页后才下载完成，先快速刷新两次，之后按节目单粒度刷新。
+        delay(1_000)
+        epgRefreshTick++
+        delay(2_000)
+        epgRefreshTick++
+        while (true) {
+            delay(30_000)
+            epgRefreshTick++
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
         AndroidView(
             modifier = Modifier.fillMaxSize(),
@@ -479,7 +511,9 @@ fun PlayerScreen(
             }
 
             PlayerUiState.PLAYING -> if (channelInfoVisible) {
-                val nowPlaying = EpgCache.currentProgramme(channelTvgIds)?.title
+                val schedule = remember(channelTvgIds, epgRefreshTick) {
+                    EpgCache.schedule(channelTvgIds)
+                }
                 Column(
                     modifier = Modifier
                         .padding(20.dp)
@@ -500,12 +534,21 @@ fun PlayerScreen(
                         Text(channelPosition, color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
                     }
                     Text(
-                        nowPlaying ?: linePosition,
+                        schedule.current?.let { "正在播  ${it.title}" } ?: linePosition,
                         color = Color(0xFFB5A99A),
                         fontSize = 13.sp,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+                    schedule.next?.let { next ->
+                        Text(
+                            "接下来  ${formatProgrammeTime(next)}  ${next.title}",
+                            color = Color(0xFF8FCAAE),
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
@@ -516,6 +559,7 @@ fun PlayerScreen(
                 channels = channels,
                 selectedIndex = channelListSelection,
                 playingIndex = playingIndex,
+                epgRevision = epgRefreshTick,
                 onChannelSelected = onChannelSelected
             )
         }
@@ -532,6 +576,7 @@ fun ChannelSelectOverlay(
     channels: List<Channel>,
     selectedIndex: Int,
     playingIndex: Int,
+    epgRevision: Int,
     onChannelSelected: (Int) -> Unit
 ) {
     val listState = rememberLazyListState()
@@ -581,7 +626,7 @@ fun ChannelSelectOverlay(
                 val selected = index == selectedIndex
                 val playing = index == playingIndex
                 // EPG 节目名：面板打开时显示"正在播什么"。
-                val nowPlaying = remember(channel) { currentProgrammeTitle(channel) }
+                val nowPlaying = remember(channel, epgRevision) { currentProgrammeTitle(channel) }
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -642,3 +687,6 @@ fun ChannelSelectOverlay(
         )
     }
 }
+
+private fun formatProgrammeTime(programme: Programme): String =
+    SimpleDateFormat("HH:mm", Locale.getDefault()).format(programme.start)
