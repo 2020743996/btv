@@ -18,7 +18,15 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,7 +47,7 @@ import androidx.compose.ui.unit.sp
 /**
  * 源地址编辑器：查看/添加/修改/删除 M3U 地址列表。
  * 放在"管理员模式"里使用（源地址属于管理员操作，普通用户不接触）。
- * 交互：点"添加"用软键盘输入；点地址行修改；点行尾 ✕ 删除。
+ * 交互：点“添加”用软键盘输入；点地址行修改；点行尾删除图标移除。
  */
 @Composable
 fun AddressEditor(
@@ -64,17 +72,15 @@ fun AddressEditor(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = pagePadding, vertical = if (compact) 16.dp else 24.dp)
         ) {
-            Text("M3U 地址管理", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp)
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                "支持多个频道源地址。相同频道会自动合并，多条线路自动备用。",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 14.sp
+            PageHeader(
+                title = "M3U 地址",
+                subtitle = "多个源会合并同名频道并保留备用线路",
+                onBack = onBack
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            ActionButton("＋ 添加新地址", highlighted = true, onClick = {
+            ActionButton("添加新地址", highlighted = true, icon = Icons.Default.Add, onClick = {
                 draft = ""
                 editingIndex = urls.size
             })
@@ -106,6 +112,12 @@ fun AddressEditor(
                         modifier = Modifier.weight(1f)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
+                    Icon(
+                        Icons.Default.Edit,
+                        contentDescription = "编辑",
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Box(
                         modifier = Modifier
                             .focusable()
@@ -118,10 +130,10 @@ fun AddressEditor(
                             )
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
-                        Text(
-                            "✕",
-                            color = MaterialTheme.colorScheme.error.copy(alpha = 0.85f),
-                            fontSize = 16.sp
+                        Icon(
+                            Icons.Default.Delete,
+                            contentDescription = "删除地址",
+                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
                         )
                     }
                 }
@@ -132,8 +144,7 @@ fun AddressEditor(
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 // 保存时过滤空白地址，避免把空串存成无效源。
-                ActionButton("保存", highlighted = true, onClick = { onSave(urls.filter { it.isNotBlank() }) })
-                ActionButton("返回", onClick = onBack)
+                ActionButton("保存", highlighted = true, icon = Icons.Default.Check, onClick = { onSave(urls.filter { it.isNotBlank() }) })
             }
         }
     } else {
@@ -149,16 +160,10 @@ fun AddressEditor(
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = pagePadding, vertical = if (compact) 16.dp else 24.dp)
         ) {
-            Text(
-                if (isAdding) "添加新地址" else "修改地址",
-                color = MaterialTheme.colorScheme.onBackground,
-                fontSize = 24.sp
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-            Text(
-                "输入频道列表地址（以 http:// 或 https:// 开头）",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 14.sp
+            PageHeader(
+                title = if (isAdding) "添加频道源" else "修改频道源",
+                subtitle = "输入以 http:// 或 https:// 开头的 M3U 地址",
+                onBack = { editingIndex = null }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -201,13 +206,15 @@ fun AddressEditor(
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (useTvKeyboard) {
-                    ActionButton("删除", onClick = { draft = draft.dropLast(1) })
+                    ActionButton("删除", icon = Icons.Default.Delete, onClick = { draft = draft.dropLast(1) })
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                ActionButton("取消", onClick = { editingIndex = null })
+                ActionButton("取消", icon = Icons.Default.Close, onClick = { editingIndex = null })
                 ActionButton(
                     if (isAdding) "添加" else "确定",
                     highlighted = true,
+                    enabled = draft.trim().startsWith("http://") || draft.trim().startsWith("https://"),
+                    icon = Icons.Default.Check,
                     onClick = {
                         val i = editingIndex!!
                         urls = if (i < urls.size) {

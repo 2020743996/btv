@@ -1,23 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Android TV 首页横幅：白底、深蓝播放符号，与图标风格一致。 -->
+<!-- Android TV 首页横幅：中性背景、直播红标识。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="320dp"
     android:height="180dp"
     android:viewportWidth="320"
     android:viewportHeight="180">
     <path
-        android:fillColor="#FFFFFF"
+        android:fillColor="#F4F5F2"
         android:pathData="M0,0h320v180h-320z" />
     <path
-        android:fillColor="#F5F7FA"
+        android:fillColor="#FFFFFF"
         android:pathData="M20,20h280v140h-280z" />
     <path
-        android:fillColor="#0D47A1"
-        android:pathData="M20,20h8v140h-8z" />
+        android:fillColor="#D43D32"
+        android:pathData="M20,20h10v140h-10z" />
     <path
-        android:fillColor="#0D47A1"
-        android:pathData="M136,58L136,122L194,90z" />
+        android:fillColor="#D43D32"
+        android:pathData="M130,54h68a10,10 0,0 1,10 10v52a10,10 0,0 1,-10 10h-68a10,10 0,0 1,-10 -10v-52a10,10 0,0 1,10 -10z" />
     <path
-        android:fillColor="#0D47A1"
-        android:pathData="M258,42a10,10 0,1 0,20 0a10,10 0,1 0,-20 0" />
+        android:fillColor="#FFFFFF"
+        android:pathData="M153,72L153,108L184,90z" />
 </vector>

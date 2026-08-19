@@ -16,6 +16,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -84,13 +87,10 @@ fun DeadChannelScreen(onBack: () -> Unit) {
                 vertical = if (compact) 14.dp else 20.dp
             )
     ) {
-        Text("失效频道管理", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp)
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            "连续测速失败 2 次的线路会被自动隐藏（判定失效）。" +
-                "这里可以查看它们，或清除记录让线路恢复。",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 14.sp
+        PageHeader(
+            title = "失效线路",
+            subtitle = "连续失败 2 次后隐藏，可重新检测或恢复",
+            onBack = onBack
         )
 
         Spacer(modifier = Modifier.height(12.dp))
@@ -131,9 +131,11 @@ fun DeadChannelScreen(onBack: () -> Unit) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 ActionButton(
                     if (checking) "检测中…" else "全部重新检测",
+                    enabled = !checking,
+                    icon = Icons.Default.Refresh,
                     onClick = { runRecheck() }
                 )
-                ActionButton("清除失效记录", onClick = {
+                ActionButton("清除失效记录", icon = Icons.Default.Delete, onClick = {
                     clearFailRecords(context)
                     failRecords = emptyList()
                     result = "已清除全部失效记录"
@@ -144,9 +146,11 @@ fun DeadChannelScreen(onBack: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 ActionButton(
                     if (checking) "检测中…" else "全部重新检测",
+                    enabled = !checking,
+                    icon = Icons.Default.Refresh,
                     onClick = { runRecheck() }
                 )
-                ActionButton("清除失效记录", onClick = {
+                ActionButton("清除失效记录", icon = Icons.Default.Delete, onClick = {
                     clearFailRecords(context)
                     failRecords = emptyList()
                     result = "已清除全部失效记录"
@@ -163,8 +167,6 @@ fun DeadChannelScreen(onBack: () -> Unit) {
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
-        ActionButton("返回", onClick = onBack)
         Spacer(modifier = Modifier.height(20.dp))
     }
 }

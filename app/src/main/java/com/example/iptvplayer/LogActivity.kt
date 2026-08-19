@@ -50,12 +50,10 @@ fun LogScreen(onBack: () -> Unit) {
                 vertical = if (compact) 14.dp else 20.dp
             )
     ) {
-        Text("运行日志", color = MaterialTheme.colorScheme.onBackground, fontSize = 22.sp)
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            "最近 ${logs.size} 条运行记录（下载、测速、播放切换等）。重启软件后清空。",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 14.sp
+        PageHeader(
+            title = "运行日志",
+            subtitle = "最近 ${logs.size} 条下载、测速与播放记录",
+            onBack = onBack
         )
         Spacer(modifier = Modifier.height(12.dp))
 
@@ -74,7 +72,5 @@ fun LogScreen(onBack: () -> Unit) {
             }
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
-        ActionButton("返回", onClick = onBack)
     }
 }

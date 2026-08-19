@@ -19,6 +19,7 @@
 | AndroidX / Jetpack Compose | UI 框架 | Apache License 2.0 |
 | androidx.media3（ExoPlayer） | 视频播放核心 | Apache License 2.0 |
 | OkHttp | 网络请求（下载 M3U/EPG、测速） | Apache License 2.0 |
+| Coil 2.7.0 | M3U 台标的异步加载与缓存 | Apache License 2.0 |
 | Kotlin / kotlinx-coroutines | 语言与协程 | Apache License 2.0 |
 
 本项目整体以 Apache License 2.0 发布，详见根目录 [LICENSE](LICENSE)。

@@ -28,10 +28,16 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -83,6 +89,7 @@ class PlayerActivity : ComponentActivity() {
     private var channelIndex = -1
     private var totalChannels = 0
     private var channelTvgIds: List<String> = emptyList()
+    private var channelLogoUrl by mutableStateOf<String?>(null)
     private var currentAttemptUrl: String? = null
     private var currentAttemptLastResult: Boolean? = null
 
@@ -119,6 +126,7 @@ class PlayerActivity : ComponentActivity() {
         channelIndex = allChannels.indexOfFirst { it.name == channelName }
         val initialChannel = allChannels.getOrNull(channelIndex)
         channelTvgIds = initialChannel?.tvgIds ?: emptyList()
+        channelLogoUrl = initialChannel?.logoUrl
 
         val httpFactory = DefaultHttpDataSource.Factory()
             .setUserAgent(APP_USER_AGENT)
@@ -176,6 +184,7 @@ class PlayerActivity : ComponentActivity() {
                     channelName = channelName,
                     channelPosition = if (channelIndex >= 0) "${channelIndex + 1}/$totalChannels" else "",
                     channelTvgIds = channelTvgIds,
+                    channelLogoUrl = channelLogoUrl,
                     loadingMessage = loadingMessage,
                     linePosition = if (urls.isEmpty()) "" else "线路 ${currentLineIndex + 1}/${urls.size}",
                     channelInfoVisible = channelInfoVisible,
@@ -203,6 +212,7 @@ class PlayerActivity : ComponentActivity() {
         channelIndex = newIndex
         channelName = newChannel.name
         channelTvgIds = newChannel.tvgIds
+        channelLogoUrl = newChannel.logoUrl
         urls = newChannel.urls
         totalChannels = allChannels.size
         addRecentChannel(this, newChannel.name)
@@ -282,6 +292,7 @@ class PlayerActivity : ComponentActivity() {
         channelIndex = index
         channelName = newChannel.name
         channelTvgIds = newChannel.tvgIds
+        channelLogoUrl = newChannel.logoUrl
         urls = newChannel.urls
         totalChannels = allChannels.size
         addRecentChannel(this, newChannel.name)
@@ -416,6 +427,7 @@ fun PlayerScreen(
     channelName: String,
     channelPosition: String,
     channelTvgIds: List<String>,
+    channelLogoUrl: String?,
     loadingMessage: String,
     linePosition: String,
     channelInfoVisible: Boolean,
@@ -504,8 +516,8 @@ fun PlayerScreen(
                     Text(channelName, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(22.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ActionButton("重新尝试", highlighted = true, onClick = onRetry)
-                        ActionButton("返回频道", onClick = onBack)
+                        ActionButton("重新尝试", highlighted = true, icon = Icons.Default.Refresh, onClick = onRetry)
+                        ActionButton("返回频道", icon = Icons.AutoMirrored.Filled.ArrowBack, onClick = onBack)
                     }
                 }
             }
@@ -519,35 +531,47 @@ fun PlayerScreen(
                         .padding(20.dp)
                         .background(Color(0xD925201B), MaterialTheme.shapes.medium)
                         .padding(horizontal = 16.dp, vertical = 11.dp)
-                        .width(360.dp)
+                        .widthIn(max = 420.dp)
+                        .fillMaxWidth(0.9f)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(
-                            channelName,
-                            color = Color(0xFFEDE4D3),
-                            fontSize = 18.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
+                        ChannelLogo(
+                            name = channelName,
+                            logoUrl = channelLogoUrl,
+                            size = 52.dp,
+                            selected = true
                         )
-                        Text(channelPosition, color = MaterialTheme.colorScheme.primary, fontSize = 13.sp)
-                    }
-                    Text(
-                        schedule.current?.let { "正在播  ${it.title}" } ?: linePosition,
-                        color = Color(0xFFB5A99A),
-                        fontSize = 13.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis
-                    )
-                    schedule.next?.let { next ->
-                        Text(
-                            "接下来  ${formatProgrammeTime(next)}  ${next.title}",
-                            color = Color(0xFF8FCAAE),
-                            fontSize = 12.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                channelName,
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            Text(
+                                schedule.current?.let { "正在播  ${it.title}" } ?: linePosition,
+                                color = Color(0xFFD7D4D0),
+                                fontSize = 13.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            schedule.next?.let { next ->
+                                Text(
+                                    "接下来  ${formatProgrammeTime(next)}  ${next.title}",
+                                    color = Color(0xFF85D1C4),
+                                    fontSize = 12.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Column(horizontalAlignment = Alignment.End) {
+                            Text(channelPosition, color = Color.White, fontSize = 13.sp)
+                            Text(linePosition, color = Color(0xFFD7D4D0), fontSize = 11.sp)
+                        }
                     }
                 }
             }
@@ -569,7 +593,7 @@ fun PlayerScreen(
 /**
  * 播放页左侧悬浮的频道选择面板。
  * 选择由 Activity 的 dispatchKeyEvent 驱动（方向键移动、OK 播放、BACK/LEFT 关闭），
- * 这里只负责渲染：当前播放频道带 ▶ 标记，选中项高亮。
+ * 这里只负责渲染：当前播放频道带播放图标，选中项高亮。
  */
 @Composable
 fun ChannelSelectOverlay(
@@ -605,7 +629,8 @@ fun ChannelSelectOverlay(
         ) {
             Text(
                 "频道列表",
-                style = MaterialTheme.typography.titleLarge.copy(brush = BrandGradient)
+                style = MaterialTheme.typography.titleLarge,
+                color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.weight(1f))
             Text(
@@ -633,7 +658,8 @@ fun ChannelSelectOverlay(
                         .heightIn(min = 52.dp)
                         .clickable { onChannelSelected(index) }
                         .background(
-                            if (selected) BrandGradient else SolidColor(Color.Transparent),
+                            if (selected) SolidColor(MaterialTheme.colorScheme.primaryContainer)
+                            else SolidColor(Color.Transparent),
                             MaterialTheme.shapes.small
                         )
                         .border(
@@ -645,19 +671,17 @@ fun ChannelSelectOverlay(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        if (playing) "▶" else (index + 1).toString().padStart(3, '0'),
-                        color = when {
-                            playing -> MaterialTheme.colorScheme.primary
-                            selected -> Color.White
-                            else -> MaterialTheme.colorScheme.onSurfaceVariant
-                        },
+                        (index + 1).toString().padStart(3, '0'),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 11.sp,
                         modifier = Modifier.width(30.dp)
                     )
+                    ChannelLogo(channel, size = 40.dp)
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             channel.name,
-                            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Medium,
                             maxLines = 1,
@@ -666,25 +690,23 @@ fun ChannelSelectOverlay(
                         if (nowPlaying != null) {
                             Text(
                                 nowPlaying,
-                                color = if (selected) Color.White.copy(alpha = 0.85f)
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 11.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
+                    if (playing) {
+                        Icon(
+                            Icons.Default.PlayArrow,
+                            contentDescription = "正在播放",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                 }
             }
         }
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            "方向键选择 · OK 播放 · BACK 关闭",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 11.sp,
-            textAlign = TextAlign.Center,
-            modifier = Modifier.fillMaxWidth()
-        )
     }
 }
 

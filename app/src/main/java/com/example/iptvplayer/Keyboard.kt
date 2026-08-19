@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -25,6 +26,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -138,6 +140,7 @@ fun ActionButton(
     label: String,
     highlighted: Boolean = false,
     enabled: Boolean = true,
+    icon: ImageVector? = null,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
@@ -165,12 +168,19 @@ fun ActionButton(
             .padding(horizontal = 28.dp),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            label,
-            color = if (focused || highlighted) Color.White
-            else if (enabled) MaterialTheme.colorScheme.onSurface
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 16.sp
-        )
+        val contentColor = if (focused || highlighted) Color.White
+        else if (enabled) MaterialTheme.colorScheme.onSurface
+        else MaterialTheme.colorScheme.onSurfaceVariant
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = contentColor
+                )
+                androidx.compose.foundation.layout.Spacer(modifier = Modifier.width(8.dp))
+            }
+            Text(label, color = contentColor, fontSize = 16.sp)
+        }
     }
 }

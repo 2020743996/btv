@@ -15,6 +15,10 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -67,17 +71,11 @@ fun AdminScreen(
                 vertical = if (compact) 16.dp else 24.dp
             )
     ) {
-        Text("管理员模式", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineLarge)
-        Spacer(modifier = Modifier.height(6.dp))
-        Text(
-            "高级功能：改频道源、处理失效频道、看运行日志。普通使用不需要进来。",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 14.sp
-        )
+        PageHeader(title = "频道管理", subtitle = "源地址、失效线路与运行记录", onBack = onExit)
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        ActionButton("一、源地址管理", highlighted = true, onClick = onOpenAddresses)
+        ActionButton("源地址管理", highlighted = true, icon = Icons.Default.Edit, onClick = onOpenAddresses)
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "添加/修改/删除 M3U 频道源地址",
@@ -87,7 +85,7 @@ fun AdminScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        ActionButton("二、失效频道管理", highlighted = true, onClick = onOpenDeadChannels)
+        ActionButton("失效线路管理", icon = Icons.Default.Delete, onClick = onOpenDeadChannels)
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "查看被隐藏的失效线路，重新检测或清除记录",
@@ -97,7 +95,7 @@ fun AdminScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        ActionButton("三、运行日志", highlighted = true, onClick = onOpenLogs)
+        ActionButton("运行日志", icon = Icons.Default.Info, onClick = onOpenLogs)
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "最近 100 条运行记录，帮助排查问题",
@@ -105,9 +103,6 @@ fun AdminScreen(
             fontSize = 13.sp
         )
 
-        Spacer(modifier = Modifier.height(32.dp))
-
-        ActionButton("退出管理员模式", onClick = onExit)
         Spacer(modifier = Modifier.height(20.dp))
     }
 }

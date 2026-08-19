@@ -11,7 +11,7 @@ class M3uParserTest {
     fun parseM3u_readsChannelMetadataAndUrl() {
         val text = """
             #EXTM3U x-tvg-url="https://example.com/epg.xml"
-            #EXTINF:-1 tvg-id="cctv1" group-title="央视",CCTV-1 高清
+            #EXTINF:-1 tvg-id="cctv1" tvg-logo="https://example.com/cctv1.png" group-title="央视",CCTV-1 高清
             https://example.com/cctv1.m3u8
         """.trimIndent()
 
@@ -21,6 +21,7 @@ class M3uParserTest {
         assertEquals("CCTV-1 高清", channels[0].name)
         assertEquals("央视", channels[0].group)
         assertEquals(listOf("cctv1"), channels[0].tvgIds)
+        assertEquals("https://example.com/cctv1.png", channels[0].logoUrl)
         assertEquals(listOf("https://example.com/cctv1.m3u8"), channels[0].urls)
     }
 
@@ -39,7 +40,13 @@ class M3uParserTest {
     fun mergeChannels_combinesEquivalentNamesAndRemovesDuplicateUrls() {
         val channels = listOf(
             Channel("CCTV-1 高清", "央视", listOf("https://a/live.m3u8"), tvgIds = listOf("cctv1")),
-            Channel("cctv1 HD", "综合", listOf("https://a/live.m3u8", "https://b/live.m3u8"), tvgIds = listOf("cctv-one"))
+            Channel(
+                "cctv1 HD",
+                "综合",
+                listOf("https://a/live.m3u8", "https://b/live.m3u8"),
+                tvgIds = listOf("cctv-one"),
+                logoUrl = "https://example.com/cctv1.png"
+            )
         )
 
         val merged = mergeChannels(channels).single()
@@ -48,6 +55,7 @@ class M3uParserTest {
         assertEquals("央视", merged.group)
         assertEquals(listOf("https://a/live.m3u8", "https://b/live.m3u8"), merged.urls)
         assertEquals(listOf("cctv1", "cctv-one"), merged.tvgIds)
+        assertEquals("https://example.com/cctv1.png", merged.logoUrl)
     }
 
     @Test
@@ -99,5 +107,12 @@ class M3uParserTest {
     @Test
     fun orderedStringListDecoding_returnsEmptyListForBrokenData() {
         assertEquals(emptyList<String>(), decodeOrderedStringList("not encoded"))
+    }
+
+    @Test
+    fun channelLogoFallback_handlesChineseLatinAndBlankNames() {
+        assertEquals("湖南", channelLogoFallback("湖南卫视"))
+        assertEquals("CCT", channelLogoFallback("CCTV-1 高清"))
+        assertEquals("TV", channelLogoFallback("---"))
     }
 }

@@ -16,6 +16,11 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Switch
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -45,7 +50,8 @@ class SettingsActivity : ComponentActivity() {
                 SettingsScreen(
                     onOpenAdmin = {
                         startActivity(Intent(this, AdminActivity::class.java))
-                    }
+                    },
+                    onBack = { finish() }
                 )
             }
         }
@@ -53,7 +59,7 @@ class SettingsActivity : ComponentActivity() {
 }
 
 @Composable
-fun SettingsScreen(onOpenAdmin: () -> Unit) {
+fun SettingsScreen(onOpenAdmin: () -> Unit, onBack: () -> Unit) {
     val context = LocalContext.current
     var elderMode by remember { mutableStateOf(isElderMode(context)) }
     var fontSize by remember { mutableIntStateOf(getFontSize(context)) }
@@ -72,23 +78,21 @@ fun SettingsScreen(onOpenAdmin: () -> Unit) {
                 vertical = if (compact) 16.dp else 24.dp
             )
     ) {
-        Text("设置", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineLarge)
-        Spacer(modifier = Modifier.height(6.dp))
+        PageHeader(title = "设置", subtitle = "调整观看体验与频道管理", onBack = onBack)
+        Spacer(modifier = Modifier.height(22.dp))
 
         // ===== 老人模式 =====
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton(
-                if (elderMode) "老人模式：开" else "老人模式：关",
-                highlighted = elderMode,
-                onClick = { elderMode = !elderMode }
-            )
+        Row(verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text("老人模式", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp)
+                Text(
+                    "保留电视、收藏和必要设置",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 13.sp
+                )
+            }
+            Switch(checked = elderMode, onCheckedChange = { elderMode = it })
         }
-        Text(
-            "老人模式只保留电视、收藏和必要设置，隐藏高级功能",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp,
-            modifier = Modifier.padding(top = 6.dp)
-        )
 
         Spacer(modifier = Modifier.height(14.dp))
 
@@ -110,20 +114,20 @@ fun SettingsScreen(onOpenAdmin: () -> Unit) {
                 fontSize = 13.sp
             )
             Spacer(modifier = Modifier.height(8.dp))
-            ActionButton("进入管理员模式", highlighted = true, onClick = onOpenAdmin)
+            ActionButton("进入频道管理", icon = Icons.Default.Settings, onClick = onOpenAdmin)
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton("保存", highlighted = true, onClick = {
+            ActionButton("保存", highlighted = true, icon = Icons.Default.Check, onClick = {
                 setElderMode(context, elderMode)
                 setFontSize(context, fontSize)
                 // 回到列表页，设置立即生效（onResume 刷新）
                 val activity = context as? SettingsActivity
                 activity?.finish()
             })
-            ActionButton("取消", onClick = {
+            ActionButton("取消", icon = Icons.Default.Close, onClick = {
                 (context as? SettingsActivity)?.finish()
             })
         }

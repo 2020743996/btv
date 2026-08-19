@@ -1,37 +1,71 @@
-# btv — 安卓 IPTV 直播播放器
+# btv - Android IPTV 直播播放器
 
-为家中长辈做的电视/手机直播播放器：遥控器好用、字体大、搜台快。
+btv 是一款面向手机、平板和 Android TV 的轻量 IPTV 播放器。界面以频道识别和遥控器操作为中心，不内置频道源，也不提供任何音视频内容。
 
-## 下载安装
+## 下载
 
-- 最新版 APK 在 [Releases 页面](https://github.com/2020743996/btv/releases) 直接下载（`app-release.apk`）
-- 支持安卓 8.0+（API 26+）的手机、平板和电视盒子
-- 首次使用：设置 → 管理员模式 → 源地址管理 → 添加你的 M3U 播放列表地址
+- 在 [GitHub Releases](https://github.com/2020743996/btv/releases) 下载最新的 `app-release.apk`
+- 支持 Android 8.0（API 26）及以上设备
+- 支持触摸屏、电视遥控器和无系统输入法的电视盒子
 
-## 特性
+## 首次使用
 
-- **手机 / 电视双端适配**：电视端遥控器方向键操作（OK 播放、上下换台、左键呼出选台面板）；手机端触摸 + 系统输入法
-- **拼音搜台**：遥控器字母键盘输入拼音即可搜中文频道（`hnws` → 湖南卫视），支持全拼/首字母/中文名混搜，前缀命中优先
-- **多源多线路**：支持添加多个 M3U 源地址，同名频道自动合并线路；播放失败自动切换备用线路
-- **EPG 节目单**：自动解析 XMLTV 节目单，频道列表和播放页显示"正在播什么"
-- **线路测速与失效管理**：一键测速按质量排序线路；连续失败的线路自动隐藏，可在回收站重新检测或恢复
-- **老人模式**：精简界面只保留电视、收藏和必要设置；三档字体缩放（标准/大/特大）
-- **收藏 / 最近观看**：常用频道一键直达，冷启动自动续播上次频道
+首次打开且没有频道源时，首页会显示“添加频道源”入口，直接进入 M3U 地址管理。保存地址后返回首页，应用会自动加载频道。
 
-## 无内置源声明
+btv 不提供默认播放源。请只添加你有权使用的 M3U 播放列表。
 
-**本软件不内置任何频道源、不提供任何频道内容。** 首次使用需自行添加 M3U 播放列表地址：
+## 主要功能
 
-设置 → 管理员模式 → 源地址管理 → 添加新地址
+- **手机与电视自适应 UI**：手机使用紧凑顶部工具栏和横向分组；电视、平板使用左侧分组导航与清晰的遥控器焦点
+- **频道台标**：解析 M3U 的 `tvg-logo`，异步加载并缓存；无台标或加载失败时显示频道缩写占位
+- **拼音搜台**：支持中文名、全拼和首字母搜索，例如 `hnws` 可匹配“湖南卫视”
+- **多源多线路**：多个 M3U 源中的同名频道自动合并，播放失败后自动尝试备用线路
+- **播放健康记录**：播放成功会清除该线路的失败记录；超时、错误或中断会自动累计并进入失效管理
+- **EPG 节目单**：解析 XMLTV，在频道列表与播放浮层显示当前节目，并在播放页显示下一节目及开始时间
+- **收藏与最近观看**：支持收藏频道、最近观看分组和冷启动续播
+- **线路测速**：批量检测线路延迟和可用性，优先保留质量更好的线路
+- **老人模式**：隐藏高级操作，并提供标准、大、特大三档字体
+
+## M3U 台标格式
+
+台标地址使用常见的 `tvg-logo` 属性：
+
+```m3u
+#EXTM3U x-tvg-url="https://example.com/epg.xml"
+#EXTINF:-1 tvg-id="cctv1" tvg-logo="https://example.com/logo/cctv1.png" group-title="央视",CCTV-1
+https://example.com/live/cctv1.m3u8
+```
+
+建议使用 HTTPS 的 PNG、JPEG 或 WebP 图片。台标仅用于显示，不会影响频道播放；图片由 Coil 自动进行内存与磁盘缓存。
+
+## 操作方式
+
+### Android TV
+
+- 上 / 下：切换频道
+- 左：打开播放页频道面板
+- OK：播放选中的频道
+- 信息键 / 菜单键：重新显示频道与节目浮层
+- 返回键：关闭面板或返回频道列表
+
+### 手机和平板
+
+- 点击频道行开始播放
+- 点击心形图标收藏或取消收藏
+- 顶部图标用于搜索、刷新、测速和设置
 
 ## 构建
 
-- Android Studio：直接打开项目，Run 即可
-- 命令行：`./gradlew assembleDebug`
+Android Studio 可直接打开项目运行，也可以使用命令行：
 
-### Release 签名（可选）
+```bash
+./gradlew testDebugUnitTest
+./gradlew assembleDebug
+```
 
-签名信息放在不入库的 `keystore.properties`（参考下方格式），没有该文件时打出未签名包：
+### Release 签名
+
+签名配置放在不提交到仓库的 `keystore.properties`：
 
 ```properties
 storeFile=keystore/your-release.jks
@@ -40,34 +74,31 @@ keyAlias=你的别名
 keyPassword=你的密码
 ```
 
-生成 keystore：`keytool -genkeypair -keystore keystore/your-release.jks -alias your-alias -keyalg RSA -keysize 2048 -validity 10950`
+没有该文件时仍可执行 `./gradlew assembleRelease`，但生成的是未签名 APK。
 
 ## 项目结构
 
-```
+```text
 app/src/main/java/com/example/iptvplayer/
-├── MainActivity.kt        # 频道列表主页（分组/收藏/最近观看/测速）
-├── PlayerActivity.kt      # 播放页（换台、选台面板、线路切换）
-├── SearchActivity.kt      # 搜索页（拼音检索、搜索历史）
-├── PinyinSearch.kt        # 拼音检索键生成与匹配
-├── M3uParser.kt           # M3U 解析与频道合并
-├── EpgParser.kt           # XMLTV 节目单解析
-├── LineTester.kt          # 线路测速与失效判定
-├── AddressEditor.kt       # 源地址管理
-├── SettingsActivity.kt    # 设置（老人模式/字体）
-├── AdminActivity.kt       # 管理员模式入口
-├── DeadChannelActivity.kt # 失效频道管理
-├── LogActivity.kt         # 运行日志
-└── Keyboard.kt / Theme.kt # 无输入法设备用的屏上键盘、主题
-
-app/src/main/java/com/github/promeg/pinyinhelper/  # 内嵌 TinyPinyin（Apache 2.0）
+|-- MainActivity.kt        # 首页、分组与频道列表
+|-- PlayerActivity.kt      # 播放、换台、线路切换与播放浮层
+|-- SearchActivity.kt      # 中文与拼音搜索
+|-- UiComponents.kt        # 台标、工具栏与页面标题组件
+|-- Theme.kt               # 自适应主题、颜色、字号与尺寸
+|-- M3uParser.kt           # M3U、tvg-logo 与频道合并
+|-- EpgParser.kt           # XMLTV 当前/下一节目
+|-- LineTester.kt          # 线路测速与失效判定
+|-- Settings.kt            # 本地设置、收藏、历史与失败记录
+|-- AddressEditor.kt       # M3U 地址管理
+|-- SettingsActivity.kt    # 老人模式与字体设置
+|-- AdminActivity.kt       # 频道管理入口
+|-- DeadChannelActivity.kt # 失效线路管理
+`-- LogActivity.kt         # 运行日志
 ```
 
-## 开源协议
+## 开源与免责声明
 
-- 本项目以 [Apache License 2.0](LICENSE) 发布
-- 引用的第三方组件（TinyPinyin、ahocorasick、AndroidX、Media3/ExoPlayer、OkHttp 等）声明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)，均为 Apache 2.0 兼容
-
-## 免责声明
-
-本软件仅是播放工具，不提供、不存储、不索引任何音视频内容；用户需自行确保所添加播放源的合法性与使用权利。
+- 项目以 [Apache License 2.0](LICENSE) 发布
+- 第三方组件说明见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)
+- 本软件不提供、不存储、不索引频道或节目内容
+- 用户需要自行确保播放源的合法性、可用性与使用权限

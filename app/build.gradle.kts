@@ -19,8 +19,8 @@ android {
         minSdk = 26
         // targetSdk：针对哪个安卓版本优化
         targetSdk = 35
-        versionCode = 4
-        versionName = "1.1.0"
+        versionCode = 5
+        versionName = "1.2.0"
     }
 
     // Release 签名：读取不入库的 keystore.properties（含 keystore 路径与密码）。
@@ -73,6 +73,10 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.material3:material3")
+    implementation("androidx.compose.material:material-icons-core")
+
+    // Coil：异步加载并缓存 M3U tvg-logo 台标。
+    implementation("io.coil-kt:coil-compose:2.7.0")
 
     // Media3 ExoPlayer：Google 官方播放器，支持 HLS（m3u8）直播流
     implementation("androidx.media3:media3-exoplayer:1.5.0")

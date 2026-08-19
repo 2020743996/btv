@@ -3,6 +3,7 @@ package com.example.iptvplayer
 private val GROUP_ATTRIBUTE = Regex("group-title=\\\"([^\\\"]*)\\\"")
 private val TVG_ID_ATTRIBUTE = Regex("tvg-id=\\\"([^\\\"]*)\\\"")
 private val TVG_NAME_ATTRIBUTE = Regex("tvg-name=\\\"([^\\\"]*)\\\"")
+private val TVG_LOGO_ATTRIBUTE = Regex("tvg-logo=\\\"([^\\\"]*)\\\"")
 private val EPG_URL_ATTRIBUTE = Regex("(?:x-tvg-url|url-tvg)=\\\"([^\\\"]*)\\\"")
 private val CHANNEL_SEPARATORS = Regex("[\\s\\-_.·、()（）]")
 private val QUALITY_SUFFIXES = Regex("(高清|超清|标清|uhd|fhd|hd|sd|1080p|720p|4k|2160p|flv|ts|hls)+$")
@@ -23,7 +24,9 @@ data class Channel(
     // EPG 标识列表：合并自所有源（tvg-id 或 tvg-name 属性）。
     // 不同源给同一频道的标识可能不同（如 "CCTV1" vs "CCTV1.us@SD"），
     // 全部保留，匹配节目单时任一命中即可
-    val tvgIds: List<String> = emptyList()
+    val tvgIds: List<String> = emptyList(),
+    // M3U 的 tvg-logo 地址；为空或加载失败时界面显示频道缩写占位。
+    val logoUrl: String? = null
 )
 
 /**
@@ -52,6 +55,7 @@ fun parseM3u(text: String): List<Channel> {
     var pendingName: String? = null
     var pendingGroup: String? = null
     var pendingTvgId: String? = null
+    var pendingLogoUrl: String? = null
 
     for (rawLine in text.lines()) {
         val line = rawLine.trim() // 去掉行首行尾的空格
@@ -67,6 +71,11 @@ fun parseM3u(text: String): List<Channel> {
                 val tvgIdMatch = TVG_ID_ATTRIBUTE.find(line)
                 pendingTvgId = tvgIdMatch?.groupValues?.get(1)
                     ?: TVG_NAME_ATTRIBUTE.find(line)?.groupValues?.get(1)
+                pendingLogoUrl = TVG_LOGO_ATTRIBUTE.find(line)
+                    ?.groupValues
+                    ?.get(1)
+                    ?.trim()
+                    ?.takeIf { it.isNotEmpty() }
 
                 // 频道名在最后一个逗号后面，例如 ...group-title="央视",CCTV-1 综合
                 val commaIndex = line.lastIndexOf(',')
@@ -89,13 +98,15 @@ fun parseM3u(text: String): List<Channel> {
                         name = pendingName ?: "未命名频道",
                         group = pendingGroup ?: "未分组",
                         urls = listOf(line), // 单个源解析出来，每个频道只有这一条线路
-                        tvgIds = if (pendingTvgId != null) listOf(pendingTvgId!!) else emptyList()
+                        tvgIds = if (pendingTvgId != null) listOf(pendingTvgId!!) else emptyList(),
+                        logoUrl = pendingLogoUrl
                     )
                 )
                 // 配对完就清空，防止漏掉 EXTINF 时把旧名字错配给下一个频道
                 pendingName = null
                 pendingGroup = null
                 pendingTvgId = null
+                pendingLogoUrl = null
             }
         }
     }
@@ -156,7 +167,11 @@ fun mergeChannels(allChannels: List<Channel>): List<Channel> {
             // EPG 标识也合并去重（不同源给同一频道的标识可能不同）
             val newUrls = existing.urls + channel.urls.filter { it !in existing.urls }
             val newTvgIds = existing.tvgIds + channel.tvgIds.filter { it !in existing.tvgIds }
-            merged[key] = existing.copy(urls = newUrls, tvgIds = newTvgIds)
+            merged[key] = existing.copy(
+                urls = newUrls,
+                tvgIds = newTvgIds,
+                logoUrl = existing.logoUrl ?: channel.logoUrl
+            )
         }
     }
 

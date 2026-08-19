@@ -10,7 +10,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -31,7 +30,17 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.FavoriteBorder
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -48,7 +57,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -284,7 +292,7 @@ fun FirstRunScreen(onAddSource: () -> Unit) {
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))
-            ActionButton("添加频道源", highlighted = true, onClick = onAddSource)
+            ActionButton("添加频道源", highlighted = true, icon = Icons.Default.Add, onClick = onAddSource)
         }
     }
 }
@@ -319,8 +327,8 @@ fun ErrorScreen(message: String, onRetry: () -> Unit, onOpenSettings: () -> Unit
             Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp)
             Spacer(modifier = Modifier.height(22.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton("重新加载", highlighted = true, onClick = onRetry)
-                ActionButton("去设置", onClick = onOpenSettings)
+                ActionButton("重新加载", highlighted = true, icon = Icons.Default.Refresh, onClick = onRetry)
+                ActionButton("去设置", icon = Icons.Default.Settings, onClick = onOpenSettings)
             }
         }
     }
@@ -376,7 +384,7 @@ fun ChannelList(
     // 自适应：电视/平板用"左分组 + 右频道"两栏，手机用"顶部横向分组 + 下方列表"单栏。
     val isWide = rememberWindowType() != WindowType.COMPACT
 
-    BoxWithConstraints(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
@@ -389,34 +397,29 @@ fun ChannelList(
                     vertical = if (isWide) 20.dp else 12.dp
                 )
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        "频道直播",
-                        style = (if (isWide) MaterialTheme.typography.headlineLarge
-                        else MaterialTheme.typography.headlineMedium).copy(brush = BrandGradient)
+                        "btv",
+                        style = if (isWide) MaterialTheme.typography.headlineLarge
+                        else MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
-                        "${allChannels.size} 个频道  ·  ${groupedChannels.size} 个分组",
+                        "直播频道  ·  ${allChannels.size} 个频道",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = if (isWide) 13.sp else 12.sp
                     )
                 }
-                if (isWide) {
-                    TopBarButtons(elderMode, isTesting, testProgress, onOpenSearch, onRefresh, onSpeedTest, onOpenSettings)
-                }
-            }
-            // 手机窄屏：标题与按钮分两行，避免横向溢出。
-            if (!isWide) {
-                Spacer(modifier = Modifier.height(10.dp))
                 TopBarButtons(elderMode, isTesting, testProgress, onOpenSearch, onRefresh, onSpeedTest, onOpenSettings)
             }
 
-            if (testSummary != null) {
+            val statusMessage = if (isTesting && testProgress != null) {
+                "正在检测线路  ${testProgress.first}/${testProgress.second}"
+            } else testSummary
+            if (statusMessage != null) {
                 Text(
-                    testSummary,
+                    statusMessage,
                     color = MaterialTheme.colorScheme.secondary,
                     fontSize = 13.sp,
                     modifier = Modifier.padding(top = 8.dp)
@@ -442,7 +445,7 @@ fun ChannelList(
                         }
                     }
 
-                    Spacer(modifier = Modifier.width(22.dp))
+                    Spacer(modifier = Modifier.width(18.dp))
 
                     ChannelListContent(
                         selectedGroup = selectedGroup,
@@ -499,42 +502,19 @@ private fun TopBarButtons(
         return if (isTesting && progress != null) "${progress.first}/${progress.second}"
         else if (isTesting) "测速中" else "测速"
     }
-    if (compact) {
-        LazyRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            contentPadding = PaddingValues(horizontal = 2.dp)
-        ) {
-            item { TopButton("搜索", onClick = onOpenSearch, compact = true) }
-            item { TopButton("刷新", onClick = onRefresh, compact = true) }
-            if (!elderMode) {
-                item {
-                    TopButton(
-                        label = testLabel(),
-                        enabled = !isTesting,
-                        onClick = onSpeedTest,
-                        compact = true
-                    )
-                }
-            }
-            item { TopButton("设置", onClick = onOpenSettings, compact = true) }
-        }
-        return
-    }
-
-    Row(
-        horizontalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        TopButton("搜索", onClick = onOpenSearch)
-        TopButton("刷新", onClick = onRefresh)
+    Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)) {
+        ToolbarAction(Icons.Default.Search, "搜索", onOpenSearch, showLabel = !compact)
+        ToolbarAction(Icons.Default.Refresh, "刷新", onRefresh, showLabel = !compact)
         if (!elderMode) {
-            TopButton(
+            ToolbarAction(
+                icon = Icons.Default.CheckCircle,
                 label = testLabel(),
                 enabled = !isTesting,
                 onClick = onSpeedTest,
-                compact = false
+                showLabel = !compact
             )
         }
-        TopButton("设置", onClick = onOpenSettings)
+        ToolbarAction(Icons.Default.Settings, "设置", onOpenSettings, showLabel = !compact)
     }
 }
 
@@ -585,7 +565,7 @@ private fun ChannelListContent(
     }
 }
 
-/** 手机模式用的横向分组胶囊。 */
+/** 手机模式用的横向分组切换。 */
 @Composable
 private fun GroupChip(name: String, count: Int, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
@@ -618,49 +598,6 @@ private fun GroupChip(name: String, count: Int, selected: Boolean, onClick: () -
 }
 
 @Composable
-private fun TopButton(
-    label: String,
-    enabled: Boolean = true,
-    compact: Boolean = false,
-    onClick: () -> Unit
-) {
-    var focused by remember { mutableStateOf(false) }
-    Box(
-        modifier = Modifier
-            .height(if (compact) 38.dp else 44.dp)
-            .onFocusChanged { focused = it.isFocused }
-            .focusable(enabled)
-            .graphicsLayer {
-                scaleX = if (focused) 1.04f else 1f
-                scaleY = if (focused) 1.04f else 1f
-            }
-            .border(
-                2.dp,
-                if (focused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                MaterialTheme.shapes.small
-            )
-            .clickable(enabled = enabled, onClick = onClick)
-            .background(
-                when {
-                    !enabled -> SolidColor(MaterialTheme.colorScheme.surface.copy(alpha = 0.5f))
-                    focused -> BrandGradient
-                    else -> SolidColor(MaterialTheme.colorScheme.surfaceVariant)
-                },
-                MaterialTheme.shapes.small
-            )
-            .padding(horizontal = if (compact) 12.dp else 18.dp),
-        contentAlignment = Alignment.Center
-    ) {
-        Text(
-            label,
-            color = if (focused) Color.White else MaterialTheme.colorScheme.onSurface,
-            fontSize = if (compact) 12.sp else 14.sp,
-            fontWeight = FontWeight.Medium
-        )
-    }
-}
-
-@Composable
 private fun GroupRow(name: String, count: Int, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val active = selected || focused
@@ -677,7 +614,7 @@ private fun GroupRow(name: String, count: Int, selected: Boolean, onClick: () ->
             )
             .clickable(onClick = onClick)
             .background(
-                if (active) SoftGradient else SolidColor(Color.Transparent),
+                if (active) SolidColor(MaterialTheme.colorScheme.surface) else SolidColor(Color.Transparent),
                 MaterialTheme.shapes.small
             )
             .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -687,7 +624,7 @@ private fun GroupRow(name: String, count: Int, selected: Boolean, onClick: () ->
             modifier = Modifier
                 .width(4.dp)
                 .height(24.dp)
-                .clip(CircleShape)
+                .clip(MaterialTheme.shapes.small)
                 .background(if (selected) BrandGradient else SolidColor(Color.Transparent))
         )
         Spacer(modifier = Modifier.width(10.dp))
@@ -716,16 +653,14 @@ fun ChannelRow(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var favoriteFocused by remember { mutableStateOf(false) }
-    val nameColor = when {
-        isFocused -> MaterialTheme.colorScheme.onPrimary
-        status == "不可用" -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
-        else -> MaterialTheme.colorScheme.onSurface
-    }
+    val nameColor = if (status == "不可用") {
+        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
+    } else MaterialTheme.colorScheme.onSurface
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 68.dp)
+            .heightIn(min = 72.dp)
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
             .border(
@@ -735,19 +670,20 @@ fun ChannelRow(
             )
             .clickable(onClick = onClick)
             .background(
-                if (isFocused) BrandGradient else SolidColor(MaterialTheme.colorScheme.surface),
+                SolidColor(MaterialTheme.colorScheme.surface),
                 MaterialTheme.shapes.small
             )
-            .padding(horizontal = 14.dp, vertical = 10.dp),
+            .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Text(
             index.toString().padStart(3, '0'),
-            color = if (isFocused) Color.White.copy(alpha = 0.8f)
-            else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 12.sp,
-            modifier = Modifier.width(42.dp)
+            modifier = Modifier.width(36.dp)
         )
+        ChannelLogo(channel = channel, size = 48.dp)
+        Spacer(modifier = Modifier.width(12.dp))
         Column(modifier = Modifier.weight(1f)) {
             Text(
                 channel.name,
@@ -759,8 +695,7 @@ fun ChannelRow(
             )
             Text(
                 nowPlaying ?: "${channel.urls.size} 条可选线路",
-                color = if (isFocused) Color.White.copy(alpha = 0.85f)
-                else MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -777,7 +712,7 @@ fun ChannelRow(
             Spacer(modifier = Modifier.width(7.dp))
             Text(
                 status,
-                color = if (isFocused) MaterialTheme.colorScheme.onPrimary else statusColor,
+                color = statusColor,
                 fontSize = 12.sp
             )
             Spacer(modifier = Modifier.width(12.dp))
@@ -790,7 +725,7 @@ fun ChannelRow(
                 .focusable()
                 .border(
                     2.dp,
-                    if (favoriteFocused) MaterialTheme.colorScheme.onBackground else Color.Transparent,
+                    if (favoriteFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
                     MaterialTheme.shapes.small
                 )
                 .clickable(onClick = onToggleFavorite)
@@ -801,12 +736,20 @@ fun ChannelRow(
                 ),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                if (isFavorite) "★" else "☆",
-                color = if (isFavorite) MaterialTheme.colorScheme.primary
-                else if (isFocused) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 21.sp
+            Icon(
+                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                contentDescription = if (isFavorite) "取消收藏" else "收藏",
+                tint = if (isFavorite) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(21.dp)
             )
         }
+        Icon(
+            imageVector = Icons.Default.PlayArrow,
+            contentDescription = "播放",
+            tint = if (isFocused) MaterialTheme.colorScheme.primary
+            else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(22.dp)
+        )
     }
 }

@@ -24,6 +24,13 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -128,14 +135,9 @@ fun SearchScreen(
                 .background(MaterialTheme.colorScheme.background).systemBarsPaddingCompat()
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding)
         ) {
-            SearchHeader(allChannels.size)
+            SearchHeader(allChannels.size, onClose)
             Spacer(modifier = Modifier.height(10.dp))
             SearchTextField(query, onQueryChange = { query = it })
-            Spacer(modifier = Modifier.height(8.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                ActionButton("清空", onClick = { query = "" })
-                ActionButton("关闭", onClick = onClose)
-            }
             Spacer(modifier = Modifier.height(10.dp))
             SearchHistoryRow(history, onPick = { query = it })
             SearchResults(
@@ -153,7 +155,7 @@ fun SearchScreen(
                 .padding(horizontal = horizontalPadding, vertical = verticalPadding)
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                SearchHeader(allChannels.size)
+                SearchHeader(allChannels.size, onClose)
                 Spacer(modifier = Modifier.height(14.dp))
                 if (useTvKeyboard) {
                     SearchInputBox(query)
@@ -165,8 +167,7 @@ fun SearchScreen(
                     if (useTvKeyboard) {
                         ActionButton("删除", onClick = { query = query.dropLast(1) })
                     }
-                    ActionButton("清空", onClick = { query = "" })
-                    ActionButton("关闭", onClick = onClose)
+                    ActionButton("清空", icon = Icons.Default.Delete, onClick = { query = "" })
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 SearchHistoryRow(history, onPick = { query = it })
@@ -187,19 +188,13 @@ fun SearchScreen(
 }
 
 @Composable
-private fun SearchHeader(channelCount: Int) {
+private fun SearchHeader(channelCount: Int, onClose: () -> Unit) {
     Row(verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            "搜索频道",
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.headlineLarge.copy(brush = BrandGradient),
-            modifier = Modifier.weight(1f)
-        )
-        Text(
-            "$channelCount 个频道",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text("搜索频道", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium)
+            Text("$channelCount 个频道", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+        }
+        ToolbarAction(Icons.Default.Close, "关闭", onClose, showLabel = false)
     }
 }
 
@@ -212,6 +207,14 @@ private fun SearchTextField(query: String, onQueryChange: (String) -> Unit) {
         onValueChange = onQueryChange,
         singleLine = true,
         placeholder = { Text("输入频道名或拼音，如：hnws") },
+        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        trailingIcon = {
+            if (query.isNotEmpty()) {
+                IconButton(onClick = { onQueryChange("") }) {
+                    Icon(Icons.Default.Close, contentDescription = "清空搜索")
+                }
+            }
+        },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
         modifier = Modifier
             .fillMaxWidth()
@@ -268,7 +271,8 @@ private fun HistoryChip(word: String, onClick: () -> Unit) {
             )
             .clickable(onClick = onClick)
             .background(
-                if (focused) BrandGradient else SolidColor(MaterialTheme.colorScheme.surfaceVariant),
+                if (focused) SolidColor(MaterialTheme.colorScheme.primaryContainer)
+                else SolidColor(MaterialTheme.colorScheme.surfaceVariant),
                 MaterialTheme.shapes.small
             )
             .padding(horizontal = 14.dp),
@@ -276,7 +280,8 @@ private fun HistoryChip(word: String, onClick: () -> Unit) {
     ) {
         Text(
             word,
-            color = if (focused) Color.White else MaterialTheme.colorScheme.onSurface,
+            color = if (focused) MaterialTheme.colorScheme.onPrimaryContainer
+            else MaterialTheme.colorScheme.onSurface,
             fontSize = 13.sp,
             maxLines = 1
         )
@@ -320,25 +325,24 @@ private fun SearchResults(
                         )
                         .clickable { onPlay(channel) }
                         .background(
-                            if (focused) BrandGradient
-                            else SolidColor(MaterialTheme.colorScheme.surface),
+                            SolidColor(MaterialTheme.colorScheme.surface),
                             MaterialTheme.shapes.small
                         )
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(horizontal = 12.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = (index + 1).toString(),
-                        color = if (focused) Color.White.copy(alpha = 0.8f)
-                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                        text = (index + 1).toString().padStart(3, '0'),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 14.sp,
-                        modifier = Modifier.width(30.dp)
+                        modifier = Modifier.width(38.dp)
                     )
+                    ChannelLogo(channel, size = 44.dp)
+                    Spacer(modifier = Modifier.width(11.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = channel.name,
-                            color = if (focused) Color.White
-                            else MaterialTheme.colorScheme.onSurface,
+                            color = MaterialTheme.colorScheme.onSurface,
                             fontSize = 16.sp,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -346,8 +350,7 @@ private fun SearchResults(
                         if (nowPlaying != null) {
                             Text(
                                 text = nowPlaying,
-                                color = if (focused) Color.White.copy(alpha = 0.85f)
-                                else MaterialTheme.colorScheme.onSurfaceVariant,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 fontSize = 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -357,9 +360,15 @@ private fun SearchResults(
                     // 显示线路数量，让用户知道这个频道有几条备用线路
                     Text(
                         text = "${channel.urls.size} 线路",
-                        color = if (focused) Color.White.copy(alpha = 0.9f)
-                        else MaterialTheme.colorScheme.secondary,
+                        color = MaterialTheme.colorScheme.secondary,
                         fontSize = 13.sp
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Icon(
+                        Icons.Default.PlayArrow,
+                        contentDescription = "播放",
+                        tint = if (focused) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Spacer(modifier = Modifier.height(4.dp))
