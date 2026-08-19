@@ -461,22 +461,47 @@ private fun TopBarButtons(
     onOpenSettings: () -> Unit
 ) {
     val compact = rememberWindowType() == WindowType.COMPACT
+    fun testLabel(): String {
+        val progress = testProgress
+        return if (isTesting && progress != null) "${progress.first}/${progress.second}"
+        else if (isTesting) "测速中" else "测速"
+    }
+    if (compact) {
+        LazyRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            contentPadding = PaddingValues(horizontal = 2.dp)
+        ) {
+            item { TopButton("搜索", onClick = onOpenSearch, compact = true) }
+            item { TopButton("刷新", onClick = onRefresh, compact = true) }
+            if (!elderMode) {
+                item {
+                    TopButton(
+                        label = testLabel(),
+                        enabled = !isTesting,
+                        onClick = onSpeedTest,
+                        compact = true
+                    )
+                }
+            }
+            item { TopButton("设置", onClick = onOpenSettings, compact = true) }
+        }
+        return
+    }
+
     Row(
-        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp)
+        horizontalArrangement = Arrangement.spacedBy(10.dp)
     ) {
-        TopButton("搜索", onClick = onOpenSearch, compact = compact)
-        TopButton("刷新", onClick = onRefresh, compact = compact)
+        TopButton("搜索", onClick = onOpenSearch)
+        TopButton("刷新", onClick = onRefresh)
         if (!elderMode) {
-            val progress = testProgress
             TopButton(
-                label = if (isTesting && progress != null) "${progress.first}/${progress.second}"
-                else if (isTesting) "测速中" else "测速",
+                label = testLabel(),
                 enabled = !isTesting,
                 onClick = onSpeedTest,
-                compact = compact
+                compact = false
             )
         }
-        TopButton("设置", onClick = onOpenSettings, compact = compact)
+        TopButton("设置", onClick = onOpenSettings)
     }
 }
 

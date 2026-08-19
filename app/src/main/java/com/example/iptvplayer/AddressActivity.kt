@@ -14,7 +14,7 @@ class AddressActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            IptvPlayerTheme {
+            IptvPlayerTheme(fontScale = fontScaleFor(getFontSize(this))) {
                 AddressEditor(
                     initialUrls = getM3uUrls(this),
                     onSave = { urls ->

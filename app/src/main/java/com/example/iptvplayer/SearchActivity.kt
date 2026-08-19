@@ -65,7 +65,7 @@ class SearchActivity : ComponentActivity() {
         // 拼音库初始化（带多音字词典）；重复调用无副作用
         ensurePinyin()
         setContent {
-            IptvPlayerTheme {
+            IptvPlayerTheme(fontScale = fontScaleFor(getFontSize(this))) {
                 SearchScreen(
                     onPlay = { channel ->
                         // 从搜索结果播放也算"看过"，记进最近观看
