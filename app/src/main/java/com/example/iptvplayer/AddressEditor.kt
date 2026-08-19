@@ -141,19 +141,24 @@ fun AddressEditor(
     } else {
         // ===== 编辑模式：输入一个地址 =====
         val isAdding = editingIndex == urls.size
+        var validationRequested by remember(editingIndex) { mutableStateOf(false) }
         // 电视优先用系统键盘（Gboard）；没有输入法的盒子才用自绘键盘
         val useTvKeyboard = isTvDevice(context) && !hasSystemIme(context)
         val normalizedDraft = draft.trim()
-        val canSubmit = normalizedDraft.startsWith("http://") || normalizedDraft.startsWith("https://")
+        val canSubmit = isSupportedM3uUrl(normalizedDraft)
 
         fun submitDraft() {
-            if (!canSubmit) return
+            if (!canSubmit) {
+                validationRequested = true
+                return
+            }
             val i = editingIndex!!
             urls = if (i < urls.size) {
                 urls.mapIndexed { j, url -> if (j == i) normalizedDraft else url }
             } else {
                 urls + normalizedDraft
             }
+            validationRequested = false
             editingIndex = null
         }
 
@@ -192,13 +197,30 @@ fun AddressEditor(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     TvKeyboard(onKey = { draft += it })
+                    if (validationRequested) {
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Text(
+                            "请输入以 http:// 或 https:// 开头的完整地址",
+                            color = MaterialTheme.colorScheme.error,
+                            fontSize = 13.sp
+                        )
+                    }
                 } else {
                     val focusRequester = remember { FocusRequester() }
                     OutlinedTextField(
                         value = draft,
-                        onValueChange = { draft = it },
+                        onValueChange = {
+                            draft = it
+                            validationRequested = false
+                        },
                         singleLine = true,
                         placeholder = { Text("https://example.com/list.m3u") },
+                        isError = validationRequested,
+                        supportingText = if (validationRequested) {
+                            {
+                                Text("请输入以 http:// 或 https:// 开头的完整地址")
+                            }
+                        } else null,
                         keyboardOptions = KeyboardOptions(
                             imeAction = ImeAction.Done,
                             keyboardType = KeyboardType.Uri
@@ -220,7 +242,6 @@ fun AddressEditor(
                     label = if (isAdding) "添加" else "确定",
                     icon = UiIcons.Check,
                     accentColor = UiColors.Info,
-                    enabled = canSubmit,
                     onClick = { submitDraft() }
                 ),
                 secondary = UiAction(
@@ -241,4 +262,14 @@ fun AddressEditor(
             )
         }
     }
+}
+
+internal fun isSupportedM3uUrl(value: String): Boolean {
+    val normalized = value.trim()
+    val prefixLength = when {
+        normalized.startsWith("https://", ignoreCase = true) -> 8
+        normalized.startsWith("http://", ignoreCase = true) -> 7
+        else -> return false
+    }
+    return normalized.length > prefixLength && normalized.substring(prefixLength).isNotBlank()
 }
