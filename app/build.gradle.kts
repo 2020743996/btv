@@ -19,8 +19,8 @@ android {
         minSdk = 26
         // targetSdk：针对哪个安卓版本优化
         targetSdk = 35
-        versionCode = 13
-        versionName = "1.8.2"
+        versionCode = 14
+        versionName = "1.9.0"
     }
 
     // Release 签名：读取不入库的 keystore.properties（含 keystore 路径与密码）。
@@ -63,6 +63,8 @@ android {
     buildFeatures {
         // 开启 Jetpack Compose
         compose = true
+        // User-Agent 使用 VERSION_NAME，确保发布版本与网络标识同步。
+        buildConfig = true
     }
 }
 
@@ -77,10 +79,11 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.7.0")
 
     // Media3 ExoPlayer：Google 官方播放器，支持 HLS（m3u8）直播流
-    implementation("androidx.media3:media3-exoplayer:1.5.0")
-    implementation("androidx.media3:media3-exoplayer-hls:1.5.0")
-    implementation("androidx.media3:media3-datasource-okhttp:1.5.0")
-    implementation("androidx.media3:media3-ui:1.5.0")
+    val media3Version = "1.9.4"
+    implementation("androidx.media3:media3-exoplayer:$media3Version")
+    implementation("androidx.media3:media3-exoplayer-hls:$media3Version")
+    implementation("androidx.media3:media3-datasource-okhttp:$media3Version")
+    implementation("androidx.media3:media3-ui:$media3Version")
 
     // OkHttp：发送网络请求，下载 M3U 文件
     implementation("com.squareup.okhttp3:okhttp:4.12.0")

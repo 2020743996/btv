@@ -2,6 +2,7 @@ package com.example.iptvplayer
 
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -42,7 +43,8 @@ data class LineQuality(
     val usable: Boolean,      // true = 本次测速可用
     val latencyMs: Long?,     // 延迟毫秒数（不可用时为 null）
     val score: Int,           // 网络分 0-100：>=70 流畅，30-69 一般，<30 慢/不可用
-    val resolution: StreamResolution? = null
+    val resolution: StreamResolution? = null,
+    val throughputKbps: Int? = null
 )
 
 /**
@@ -61,14 +63,15 @@ suspend fun testChannel(
 ): Channel {
     // 并发检测所有线路
     val results = coroutineScope {
-        channel.urls.map { url ->
+        channel.allUrls.distinct().map { url ->
             async {
                 requestLimit.withPermit {
-                    testLine(context, url, channel.urlQualityHints[url])
+                    testLine(url, channel.urlQualityHints[url])
                 }
             }
         }.awaitAll()
     }
+    recordLineResults(context, results.associate { it.url to it.usable })
 
     val usable = sortUsableLines(results)
     val suspected = results.filter { !it.usable && !isLineDead(context, it.url) }
@@ -112,54 +115,92 @@ suspend fun testAllChannels(
 
 /** 检测一条线路：读取有限清单内容，结合线路自己的 M3U 提示、实测和历史记录得出质量。 */
 suspend fun testLine(
-    context: Context,
     url: String,
     resolutionHint: String? = null
 ): LineQuality = withContext(Dispatchers.IO) {
-    val request = Request.Builder()
-        .url(url)
-        .header("User-Agent", APP_USER_AGENT)
-        .build()
-
     val startTime = System.currentTimeMillis()
     try {
+        val request = Request.Builder()
+            .url(url)
+            .header("User-Agent", APP_USER_AGENT)
+            .build()
         speedTestClient.newCall(request).execute().use { response ->
             val latency = System.currentTimeMillis() - startTime
             // 2xx / 3xx 都算可用（重定向也是正常的）
             if (response.isSuccessful) {
                 // 最多读取 64KB：足以覆盖大多数 HLS 主清单，同时避免下载完整媒体。
+                val transferStart = System.currentTimeMillis()
                 val probe = response.body?.byteStream()?.use { stream ->
                     stream.readUpTo(RESOLUTION_PROBE_BYTES)
                 } ?: byteArrayOf()
-                if (probe.isNotEmpty()) {
-                    // 测速成功：失败计数清零（线路恢复了）
-                    recordLineResult(context, url, success = true)
-                    // 打分：满分 100，延迟越高扣越多（每 10ms 扣 1 分，最多扣 80）
-                    val score = (100 - (latency / 10).toInt()).coerceIn(0, 100)
+                val transferMs = (System.currentTimeMillis() - transferStart).coerceAtLeast(1L)
+                if (probe.isNotEmpty() && isLikelyStreamResponse(probe, response.header("Content-Type"))) {
+                    val networkQuality = calculateNetworkQuality(latency, probe.size, transferMs)
                     val resolution = detectStreamResolution(
                         probe = probe,
                         finalUrl = response.request.url.toString(),
                         hints = listOfNotNull(resolutionHint)
                     )
-                    LineQuality(url, true, latency, score, resolution)
+                    LineQuality(
+                        url = url,
+                        usable = true,
+                        latencyMs = latency,
+                        score = networkQuality.score,
+                        resolution = resolution,
+                        throughputKbps = networkQuality.throughputKbps
+                    )
                 } else {
                     // 有响应但没内容：也算失败
-                    recordLineResult(context, url, success = false)
                     LineQuality(url, false, latency, 0)
                 }
             } else {
-                recordLineResult(context, url, success = false)
                 LineQuality(url, false, null, 0)
             }
         }
+    } catch (e: CancellationException) {
+        throw e
     } catch (e: Exception) {
         // 超时、拒绝连接、DNS 失败等都算失败
-        recordLineResult(context, url, success = false)
         LineQuality(url, false, null, 0)
     }
 }
 
 private const val RESOLUTION_PROBE_BYTES = 64 * 1024
+private const val THROUGHPUT_SAMPLE_MIN_BYTES = 16 * 1024
+
+internal data class ProbeNetworkQuality(val score: Int, val throughputKbps: Int?)
+
+internal fun calculateNetworkQuality(
+    latencyMs: Long,
+    bytesRead: Int,
+    transferMs: Long
+): ProbeNetworkQuality {
+    val latencyScore = (100 - (latencyMs / 12).toInt()).coerceIn(20, 100)
+    if (bytesRead < THROUGHPUT_SAMPLE_MIN_BYTES) {
+        return ProbeNetworkQuality(latencyScore, null)
+    }
+    val throughputKbps = ((bytesRead.toLong() * 8) / transferMs.coerceAtLeast(1L))
+        .coerceAtMost(Int.MAX_VALUE.toLong())
+        .toInt()
+    val throughputScore = when {
+        throughputKbps >= 8_000 -> 100
+        throughputKbps >= 4_000 -> 90
+        throughputKbps >= 2_000 -> 75
+        throughputKbps >= 1_000 -> 60
+        throughputKbps >= 500 -> 40
+        else -> 20
+    }
+    return ProbeNetworkQuality(
+        score = ((latencyScore * 45 + throughputScore * 55) / 100).coerceIn(0, 100),
+        throughputKbps = throughputKbps
+    )
+}
+
+internal fun isLikelyStreamResponse(probe: ByteArray, contentType: String?): Boolean {
+    if (contentType?.contains("text/html", ignoreCase = true) == true) return false
+    val prefix = String(probe, 0, minOf(probe.size, 512), Charsets.UTF_8).trimStart().lowercase()
+    return !prefix.startsWith("<!doctype html") && !prefix.startsWith("<html")
+}
 
 private fun InputStream.readUpTo(limit: Int): ByteArray {
     val output = ByteArrayOutputStream(minOf(limit, 8 * 1024))

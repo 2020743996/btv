@@ -1,6 +1,6 @@
 package com.example.iptvplayer
 
-import android.content.Context
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.xmlpull.v1.XmlPullParser
@@ -71,7 +71,7 @@ fun parseXmltv(text: String): List<Programme> {
                 "title" -> inTitle = true
             }
 
-            XmlPullParser.TEXT -> if (inTitle) title = parser.text
+            XmlPullParser.TEXT -> if (inTitle) title += parser.text
 
             XmlPullParser.END_TAG -> when (parser.name) {
                 "title" -> inTitle = false
@@ -121,12 +121,12 @@ fun getProgrammeSchedule(
     now: Date
 ): ProgrammeSchedule {
     if (tvgIds.isEmpty()) return ProgrammeSchedule(null, null)
-    val channelIds = tvgIds.toHashSet()
+    val channelIds = tvgIds.map(::normalizeEpgChannelId).toHashSet()
     var current: Programme? = null
     var next: Programme? = null
 
     for (programme in programmes) {
-        if (programme.channelId !in channelIds) continue
+        if (normalizeEpgChannelId(programme.channelId) !in channelIds) continue
         val isCurrent = !now.before(programme.start) && now.before(programme.end)
         if (isCurrent && (current == null || programme.start.before(current.start))) {
             current = programme
@@ -137,6 +137,8 @@ fun getProgrammeSchedule(
     }
     return ProgrammeSchedule(current, next)
 }
+
+internal fun normalizeEpgChannelId(value: String): String = value.trim().lowercase(Locale.ROOT)
 
 /**
  * 节目单缓存：MainActivity 下载解析后写进来，列表和播放页读。
@@ -156,17 +158,26 @@ object EpgCache {
     @Volatile
     private var loadedAtMillis: Long = 0L
 
+    @Volatile
+    private var sourceUrls: Set<String> = emptySet()
+
     /** programmesByChannel 在后台线程构建好再整体传入，避免主线程做大的 groupBy。 */
     @Synchronized
-    fun update(programmes: List<Programme>, programmesByChannel: Map<String, List<Programme>>) {
+    fun update(
+        programmes: List<Programme>,
+        programmesByChannel: Map<String, List<Programme>>,
+        sourceUrls: Set<String>
+    ) {
         this.programmes = programmes
         this.programmesByChannel = programmesByChannel
+        this.sourceUrls = sourceUrls
         loadedAtMillis = System.currentTimeMillis()
     }
 
     /** 是否已超过有效期需要重新下载（避免频繁进出播放页反复拉 8MB EPG）。 */
-    fun needsRefresh(): Boolean =
-        System.currentTimeMillis() - loadedAtMillis >= EPG_TTL_MS
+    fun needsRefresh(requestedSources: Set<String>): Boolean =
+        requestedSources != sourceUrls ||
+            System.currentTimeMillis() - loadedAtMillis >= EPG_TTL_MS
 
     /** 只扫描当前频道的节目，不再为列表中的每一行遍历整份 EPG。 */
     fun schedule(tvgIds: List<String>, now: Date = Date()): ProgrammeSchedule {
@@ -174,7 +185,7 @@ object EpgCache {
         var current: Programme? = null
         var next: Programme? = null
         for (tvgId in tvgIds) {
-            val programmes = programmesByChannel[tvgId].orEmpty()
+            val programmes = programmesByChannel[normalizeEpgChannelId(tvgId)].orEmpty()
             val match = getProgrammeSchedule(programmes, listOf(tvgId), now)
             if (match.current != null &&
                 (current == null || match.current.start.before(current.start))
@@ -205,28 +216,49 @@ object EpgCache {
  *   绝不能占主线程，否则会阻塞界面/按键导致 ANR。
  * - 只保留"当前时刻附近"的节目（界面只需"现在播什么"），降低内存占用。
  */
-suspend fun loadEpg(context: Context, m3uText: String?) {
-    val epgUrl = m3uText?.let { extractEpgUrl(it) } ?: return
-    if (!EpgCache.needsRefresh()) return // 10 分钟内加载过就不再下载
-    try {
-        val text = downloadM3u(epgUrl)
-        val now = System.currentTimeMillis()
-        // 保留窗口：开始时间不晚于"现在 + 24h"，结束时间不早于"现在 - 2h"。
-        val maxStart = now + 24 * 3600_000L
-        val minEnd = now - 2 * 3600_000L
-        val (programmes, byChannel) = withContext(Dispatchers.Default) {
-            val list = parseXmltv(text).filter { p ->
-                p.start.time < maxStart && p.end.time > minEnd
+suspend fun loadEpg(m3uTexts: List<String>) {
+    val epgUrls = m3uTexts.flatMap(::extractEpgUrls).toSet()
+    if (epgUrls.isEmpty() || !EpgCache.needsRefresh(epgUrls)) return
+
+    val now = System.currentTimeMillis()
+    val maxStart = now + 24 * 3600_000L
+    val minEnd = now - 2 * 3600_000L
+    val collected = mutableListOf<Programme>()
+    var loadedSources = 0
+
+    for (epgUrl in epgUrls) {
+        try {
+            val text = downloadM3u(epgUrl)
+            collected += withContext(Dispatchers.Default) {
+                parseXmltv(text).filter { programme ->
+                    programme.start.time < maxStart && programme.end.time > minEnd
+                }
             }
-            list to list.groupBy { it.channelId }
+            loadedSources++
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            AppLog.log("EPG 加载失败：${e.message ?: e.javaClass.simpleName}")
+            android.util.Log.w("IptvPlayer", "EPG 加载失败 $epgUrl", e)
         }
-        EpgCache.update(programmes, byChannel)
-        AppLog.log("EPG 加载成功：${programmes.size} 条节目")
-    } catch (e: Exception) {
-        // 记录具体原因方便排查（下载超时 / 域名不可达 / 解析异常等）。
-        AppLog.log("EPG 加载失败：${e.message ?: e.javaClass.simpleName}")
-        android.util.Log.w("IptvPlayer", "EPG 加载失败 $epgUrl", e)
     }
+
+    if (loadedSources == 0) return
+    val (programmes, byChannel) = withContext(Dispatchers.Default) {
+        val merged = collected
+            .distinctBy { programme ->
+                listOf(
+                    normalizeEpgChannelId(programme.channelId),
+                    programme.start.time,
+                    programme.end.time,
+                    programme.title
+                )
+            }
+            .sortedBy { it.start }
+        merged to merged.groupBy { normalizeEpgChannelId(it.channelId) }
+    }
+    EpgCache.update(programmes, byChannel, epgUrls)
+    AppLog.log("EPG 加载成功：$loadedSources/${epgUrls.size} 个源，${programmes.size} 条节目")
 }
 
 /** 某个频道此刻正在播的节目名（没有节目单/没匹配到就返回 null） */

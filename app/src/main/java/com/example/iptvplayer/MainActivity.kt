@@ -59,7 +59,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
@@ -109,6 +111,13 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
     var testProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var testSummary by remember { mutableStateOf<String?>(null) }
     var testKey by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(60_000)
+            epgRevision++
+        }
+    }
 
     // 本次启动是否已自动进入直播（冷启动直接播，返回列表后不再重复跳转）。
     var autoPlayedThisLaunch by rememberSaveable { mutableStateOf(false) }
@@ -187,6 +196,8 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
                         try {
                             val text = downloadM3u(url)
                             LoadedSource(text, parseM3u(text))
+                        } catch (e: CancellationException) {
+                            throw e
                         } catch (e: Exception) {
                             android.util.Log.w("IptvPlayer", "源下载失败（跳过）：$url", e)
                             null
@@ -211,11 +222,11 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
                 groupedChannels = merged.groupBy { it.group }
                 AppLog.log("加载成功：${merged.size} 个频道（${loadedSources.size} 个源）")
 
-                val epgSource = loadedSources.firstOrNull { extractEpgUrl(it.text) != null }?.text
-                if (epgSource != null) {
+                val epgSources = loadedSources.map { it.text }.filter { extractEpgUrls(it).isNotEmpty() }
+                if (epgSources.isNotEmpty()) {
                     // EPG 是增强信息，不阻塞频道列表先显示。
                     launch {
-                        loadEpg(context, epgSource)
+                        loadEpg(epgSources)
                         epgRevision++
                     }
                 }
@@ -302,7 +313,10 @@ fun LoadingScreen(message: String) {
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 24.dp).fillMaxWidth().widthIn(max = 520.dp)
+        ) {
             CircularProgressIndicator(
                 modifier = Modifier.size(34.dp),
                 color = MaterialTheme.colorScheme.primary,
@@ -320,7 +334,10 @@ fun ErrorScreen(message: String, onRetry: () -> Unit, onOpenSettings: () -> Unit
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
     ) {
-        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            modifier = Modifier.padding(horizontal = 24.dp).fillMaxWidth().widthIn(max = 520.dp)
+        ) {
             Text("频道加载失败", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.error)
             Spacer(modifier = Modifier.height(10.dp))
             Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp)
@@ -338,7 +355,8 @@ fun ErrorScreen(message: String, onRetry: () -> Unit, onOpenSettings: () -> Unit
                     accentColor = UiColors.Settings,
                     onClick = onOpenSettings
                 ),
-                modifier = Modifier.widthIn(max = 420.dp)
+                modifier = Modifier.widthIn(max = 420.dp),
+                stackOnCompact = true
             )
         }
     }
@@ -688,9 +706,16 @@ fun ChannelRow(
 ) {
     var isFocused by remember { mutableStateOf(false) }
     var favoriteFocused by remember { mutableStateOf(false) }
+    val compact = rememberWindowType() == WindowType.COMPACT
     val nameColor = if (status == "不可用") {
         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
     } else MaterialTheme.colorScheme.onSurface
+    val statusColor = when {
+        status == null -> MaterialTheme.colorScheme.onSurfaceVariant
+        status.endsWith("流畅") -> MaterialTheme.colorScheme.secondary
+        status.endsWith("一般") -> MaterialTheme.colorScheme.tertiary
+        else -> MaterialTheme.colorScheme.error
+    }
 
     Row(
         modifier = Modifier
@@ -711,23 +736,32 @@ fun ChannelRow(
             .padding(horizontal = 12.dp, vertical = 9.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Text(
-            index.toString().padStart(3, '0'),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 12.sp,
-            modifier = Modifier.width(36.dp)
-        )
-        ChannelLogo(channel = channel, size = 48.dp)
-        Spacer(modifier = Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
+        if (!compact) {
             Text(
-                channel.name,
-                color = nameColor,
-                fontSize = 17.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
+                index.toString().padStart(3, '0'),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                fontSize = 12.sp,
+                modifier = Modifier.width(36.dp)
             )
+        }
+        ChannelLogo(channel = channel, size = if (compact) 44.dp else 48.dp)
+        Spacer(modifier = Modifier.width(if (compact) 10.dp else 12.dp))
+        Column(modifier = Modifier.weight(1f)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    channel.name,
+                    color = nameColor,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Medium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
+                )
+                if (compact && status != null) {
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(status, color = statusColor, fontSize = 11.sp, maxLines = 1)
+                }
+            }
             Text(
                 nowPlaying ?: "${channel.urls.size} 条可选线路",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -737,12 +771,7 @@ fun ChannelRow(
             )
         }
 
-        if (status != null) {
-            val statusColor = when {
-                status.endsWith("流畅") -> MaterialTheme.colorScheme.secondary
-                status.endsWith("一般") -> MaterialTheme.colorScheme.tertiary
-                else -> MaterialTheme.colorScheme.error
-            }
+        if (!compact && status != null) {
             Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(statusColor))
             Spacer(modifier = Modifier.width(7.dp))
             Text(
@@ -779,12 +808,14 @@ fun ChannelRow(
                 modifier = Modifier.size(21.dp)
             )
         }
-        Icon(
-            imageVector = UiIcons.Play,
-            contentDescription = "播放",
-            tint = if (isFocused) UiColors.Live
-            else MaterialTheme.colorScheme.onSurfaceVariant,
-            modifier = Modifier.size(22.dp)
-        )
+        if (!compact) {
+            Icon(
+                imageVector = UiIcons.Play,
+                contentDescription = "播放",
+                tint = if (isFocused) UiColors.Live
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(22.dp)
+            )
+        }
     }
 }

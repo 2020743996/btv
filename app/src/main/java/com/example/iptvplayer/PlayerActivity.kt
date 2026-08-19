@@ -58,6 +58,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.okhttp.OkHttpDataSource
@@ -81,6 +82,7 @@ class PlayerActivity : ComponentActivity() {
     private var errorMessage by mutableStateOf<String?>(null)
     private var loadingMessage by mutableStateOf("正在连接直播源…")
     private var channelInfoVisible by mutableStateOf(true)
+    private var playbackQuality by mutableStateOf<String?>(null)
 
     private var urls: List<String> = emptyList()
     private var currentLineIndex = 0
@@ -92,6 +94,7 @@ class PlayerActivity : ComponentActivity() {
     private var currentAttemptUrl: String? = null
     private var currentAttemptLastResult: Boolean? = null
     private var playbackStartedForAttempt = false
+    private var lineTransitionInProgress = false
 
     // 左侧悬浮频道选择面板：DPAD_LEFT 呼出，面板内上下移动、OK 播放、BACK/LEFT 关闭。
     private var channelListVisible by mutableStateOf(false)
@@ -166,7 +169,11 @@ class PlayerActivity : ComponentActivity() {
                         when (state) {
                             Player.STATE_READY -> {
                                 cancelPlaybackTimeout()
+                                lineTransitionInProgress = false
                                 playbackStartedForAttempt = true
+                                exoPlayer.videoFormat?.let { format ->
+                                    updatePlaybackResolution(format.width, format.height)
+                                }
                                 playerState = PlayerUiState.PLAYING
                                 loadingMessage = ""
                                 scheduleStablePlaybackMark()
@@ -191,6 +198,10 @@ class PlayerActivity : ComponentActivity() {
                         AppLog.log("$channelName 线路 ${currentLineIndex + 1} 播放错误：${error.errorCodeName}")
                         tryNextLine("线路不可用")
                     }
+
+                    override fun onVideoSizeChanged(videoSize: VideoSize) {
+                        updatePlaybackResolution(videoSize.width, videoSize.height)
+                    }
                 })
             }
 
@@ -206,6 +217,7 @@ class PlayerActivity : ComponentActivity() {
                     channelLogoUrl = channelLogoUrl,
                     loadingMessage = loadingMessage,
                     linePosition = if (urls.isEmpty()) "" else "线路 ${currentLineIndex + 1}/${urls.size}",
+                    playbackQuality = playbackQuality,
                     channelInfoVisible = channelInfoVisible,
                     channels = allChannels,
                     channelListVisible = channelListVisible,
@@ -322,6 +334,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun startFromFirst() {
+        lineTransitionInProgress = false
         urls = prioritizePlaybackUrls(urls) { url -> getFailCount(this, url) }
         currentLineIndex = 0
         if (urls.isEmpty()) {
@@ -332,6 +345,8 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun tryNextLine(reason: String) {
+        if (lineTransitionInProgress) return
+        lineTransitionInProgress = true
         cancelPlaybackTimeout()
         recordCurrentAttempt(success = false)
         if (currentLineIndex + 1 < urls.size) {
@@ -344,6 +359,7 @@ class PlayerActivity : ComponentActivity() {
         } else {
             showPlaybackError("当前频道的 ${urls.size} 条线路均无法播放，请稍后再试")
         }
+        mainHandler.post { lineTransitionInProgress = false }
     }
 
     private fun startPlayback(url: String, message: String) {
@@ -356,6 +372,7 @@ class PlayerActivity : ComponentActivity() {
         currentAttemptUrl = url
         currentAttemptLastResult = null
         playbackStartedForAttempt = false
+        playbackQuality = null
         mainHandler.removeCallbacks(markPlaybackStable)
 
         val mediaItem = MediaItem.Builder()
@@ -374,6 +391,16 @@ class PlayerActivity : ComponentActivity() {
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
         schedulePlaybackTimeout()
+    }
+
+    private fun updatePlaybackResolution(width: Int, height: Int) {
+        if (!playbackStartedForAttempt) return
+        if (width !in 160..8192 || height !in 120..4320) return
+        val resolution = StreamResolution(width, height)
+        playbackQuality = resolution.label
+        currentAttemptUrl?.let { url ->
+            ChannelCache.updateLineResolution(channelName, url, resolution)
+        }
     }
 
     /** 每次播放尝试只记一次结果，避免错误回调和超时回调重复累计。 */
@@ -469,6 +496,7 @@ fun PlayerScreen(
     channelLogoUrl: String?,
     loadingMessage: String,
     linePosition: String,
+    playbackQuality: String?,
     channelInfoVisible: Boolean,
     channels: List<Channel>,
     channelListVisible: Boolean,
@@ -493,6 +521,10 @@ fun PlayerScreen(
     }
 
     Box(modifier = Modifier.fillMaxSize().background(Color.Black)) {
+        val lineDetails = listOfNotNull(
+            linePosition.takeIf { it.isNotBlank() },
+            playbackQuality
+        ).joinToString(" · ")
         AndroidView(
             modifier = Modifier.fillMaxSize(),
             factory = { context ->
@@ -525,12 +557,12 @@ fun PlayerScreen(
                     Spacer(modifier = Modifier.height(18.dp))
                     Text(
                         channelName,
-                        color = Color(0xFFEDE4D3),
+                        color = Color.White,
                         fontSize = 22.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                     Spacer(modifier = Modifier.height(6.dp))
-                    Text(loadingMessage, color = Color(0xFFB5A99A), fontSize = 14.sp)
+                    Text(loadingMessage, color = Color(0xFFD2D6DA), fontSize = 14.sp)
                     if (linePosition.isNotEmpty()) {
                         Text(linePosition, color = MaterialTheme.colorScheme.primary, fontSize = 12.sp)
                     }
@@ -567,7 +599,8 @@ fun PlayerScreen(
                             accentColor = UiColors.Info,
                             onClick = onBack
                         ),
-                        modifier = Modifier.widthIn(max = 420.dp)
+                        modifier = Modifier.widthIn(max = 420.dp),
+                        stackOnCompact = true
                     )
                 }
             }
@@ -609,7 +642,7 @@ fun PlayerScreen(
                                 overflow = TextOverflow.Ellipsis
                             )
                             Text(
-                                schedule.current?.let { "正在播  ${it.title}" } ?: linePosition,
+                                schedule.current?.let { "正在播  ${it.title}" } ?: lineDetails,
                                 color = Color(0xFFD7D4D0),
                                 fontSize = 13.sp,
                                 maxLines = 1,
@@ -627,7 +660,7 @@ fun PlayerScreen(
                         }
                         Column(horizontalAlignment = Alignment.End) {
                             Text(channelPosition, color = Color.White, fontSize = 13.sp)
-                            Text(linePosition, color = Color(0xFFD7D4D0), fontSize = 11.sp)
+                            Text(lineDetails, color = Color(0xFFD7D4D0), fontSize = 11.sp)
                         }
                     }
                 }

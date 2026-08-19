@@ -9,6 +9,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -73,6 +74,7 @@ fun AdminScreen(
 
         ActionButton(
             "源地址管理",
+            modifier = Modifier.fillMaxWidth(),
             icon = UiIcons.Pencil,
             accentColor = UiColors.Edit,
             onClick = onOpenAddresses
@@ -88,6 +90,7 @@ fun AdminScreen(
 
         ActionButton(
             "失效线路管理",
+            modifier = Modifier.fillMaxWidth(),
             icon = UiIcons.Trash,
             accentColor = UiColors.Delete,
             onClick = onOpenDeadChannels
@@ -101,7 +104,13 @@ fun AdminScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        ActionButton("运行日志", icon = UiIcons.Info, accentColor = UiColors.Info, onClick = onOpenLogs)
+        ActionButton(
+            "运行日志",
+            modifier = Modifier.fillMaxWidth(),
+            icon = UiIcons.Info,
+            accentColor = UiColors.Info,
+            onClick = onOpenLogs
+        )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "最近 100 条运行记录，帮助排查问题",

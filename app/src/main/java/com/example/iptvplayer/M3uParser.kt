@@ -28,7 +28,9 @@ data class Channel(
     // M3U 的 tvg-logo 地址；为空或加载失败时界面显示频道缩写占位。
     val logoUrl: String? = null,
     // 每条 URL 在原始 M3U 中对应的频道名/tvg-id，用于识别 CCTV4K 等线路级画质标记。
-    val urlQualityHints: Map<String, String> = emptyMap()
+    val urlQualityHints: Map<String, String> = emptyMap(),
+    // 原始完整线路集。测速可从 urls 隐藏失效线，但恢复时仍能找回，不必重新下载 M3U。
+    val allUrls: List<String> = urls
 )
 
 /**
@@ -125,10 +127,17 @@ fun parseM3u(text: String): List<Channel> {
  * 规范的 M3U 第一行会写：#EXTM3U x-tvg-url="https://xxx/e.xml"
  * 返回 null 表示这个源没有节目单。
  */
-fun extractEpgUrl(m3uText: String): String? {
-    val firstLine = m3uText.lines().firstOrNull() ?: return null
-    return EPG_URL_ATTRIBUTE.find(firstLine)?.groupValues?.get(1)
+fun extractEpgUrls(m3uText: String): List<String> {
+    val firstLine = m3uText.lines().firstOrNull() ?: return emptyList()
+    return EPG_URL_ATTRIBUTE.findAll(firstLine)
+        .flatMap { match -> match.groupValues[1].split(',', ';').asSequence() }
+        .map { it.trim() }
+        .filter { it.startsWith("http://") || it.startsWith("https://") }
+        .distinct()
+        .toList()
 }
+
+fun extractEpgUrl(m3uText: String): String? = extractEpgUrls(m3uText).firstOrNull()
 
 /**
  * 频道名标准化：把各种写法统一成"比较用"的归一化名字。
@@ -178,7 +187,8 @@ fun mergeChannels(allChannels: List<Channel>): List<Channel> {
                 urls = newUrls,
                 tvgIds = newTvgIds,
                 logoUrl = existing.logoUrl ?: channel.logoUrl,
-                urlQualityHints = newQualityHints
+                urlQualityHints = newQualityHints,
+                allUrls = newUrls
             )
         }
     }
@@ -229,6 +239,51 @@ object ChannelCache {
     @Synchronized
     fun replaceChannels(channels: List<Channel>) {
         this.channels = channels
+    }
+
+    /** 失效线复测成功后立即放回对应频道，不必等待用户强制刷新源。 */
+    @Synchronized
+    fun restoreLine(url: String, quality: LineQuality? = null) {
+        channels = channels.map { channel ->
+            if (url !in channel.allUrls) return@map channel
+            val restoredUrls = (channel.urls + url).distinct()
+            val qualities = channel.lineQuality.orEmpty()
+                .filterNot { it.url == url } + listOfNotNull(quality)
+            val rankedUrls = sortUsableLines(qualities).map { it.url }
+            channel.copy(
+                urls = (rankedUrls.filter { it in restoredUrls } +
+                    restoredUrls.filter { it !in rankedUrls }).distinct(),
+                lineQuality = qualities.takeIf { it.isNotEmpty() }
+            )
+        }
+    }
+
+    /** 清空失效记录后恢复每个频道的完整原始线路，并清除过期测速状态。 */
+    @Synchronized
+    fun restoreAllLines() {
+        channels = channels.map { channel ->
+            channel.copy(urls = channel.allUrls.distinct(), lineQuality = null)
+        }
+    }
+
+    /** 播放器拿到真实视频格式后回写清晰度，列表和下次播放可直接受益。 */
+    @Synchronized
+    fun updateLineResolution(channelName: String, url: String, resolution: StreamResolution) {
+        channels = channels.map { channel ->
+            if (channel.name != channelName || url !in channel.allUrls) return@map channel
+            val existing = channel.lineQuality.orEmpty().firstOrNull { it.url == url }
+            val bestResolution = listOfNotNull(existing?.resolution, resolution)
+                .maxByOrNull { it.pixelCount }
+            val updated = (channel.lineQuality.orEmpty().filterNot { it.url == url } +
+                (existing?.copy(usable = true, resolution = bestResolution)
+                    ?: LineQuality(url, usable = true, latencyMs = null, score = 70, resolution = bestResolution)))
+            val rankedUrls = sortUsableLines(updated).map { it.url }
+            channel.copy(
+                urls = (rankedUrls.filter { it in channel.urls } +
+                    channel.urls.filter { it !in rankedUrls }).distinct(),
+                lineQuality = updated
+            )
+        }
     }
 
     fun invalidate() {

@@ -12,8 +12,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -27,7 +27,12 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * DeadChannelActivity：失效频道管理（管理员模式子页面）。
@@ -62,11 +67,17 @@ fun DeadChannelScreen(onBack: () -> Unit) {
         checking = true
         result = null
         scope.launch {
-            var recovered = 0
-            for ((url, _) in failRecords) {
-                val test = testLine(context, url)
-                if (test.usable) recovered++
+            val limit = Semaphore(6)
+            val tests = coroutineScope {
+                failRecords.map { (url, _) ->
+                    async { limit.withPermit { testLine(url) } }
+                }.awaitAll()
             }
+            recordLineResults(context, tests.associate { it.url to it.usable })
+            tests.filter { it.usable }.forEach { quality ->
+                ChannelCache.restoreLine(quality.url, quality)
+            }
+            val recovered = tests.count { it.usable }
             failRecords = getAllFailRecords(context)
             result = "检测完成：$recovered 条线路已恢复"
             checking = false
@@ -78,7 +89,6 @@ fun DeadChannelScreen(onBack: () -> Unit) {
         modifier = Modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background).systemBarsPaddingCompat()
-            .verticalScroll(rememberScrollState())
             .padding(
                 horizontal = if (compact) 16.dp else 24.dp,
                 vertical = if (compact) 14.dp else 20.dp
@@ -92,10 +102,16 @@ fun DeadChannelScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        if (failRecords.isEmpty()) {
-            Text("（没有失效记录）", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
-        } else {
-            failRecords.forEach { (url, count) ->
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            if (failRecords.isEmpty()) {
+                item {
+                    Text("（没有失效记录）", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                }
+            }
+            items(failRecords, key = { it.first }) { (url, count) ->
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -117,7 +133,6 @@ fun DeadChannelScreen(onBack: () -> Unit) {
                         fontSize = 13.sp
                     )
                 }
-                Spacer(modifier = Modifier.height(4.dp))
             }
         }
 
@@ -132,6 +147,7 @@ fun DeadChannelScreen(onBack: () -> Unit) {
                     role = ActionRole.DESTRUCTIVE,
                     onClick = {
                         clearFailRecords(context)
+                        ChannelCache.restoreAllLines()
                         failRecords = emptyList()
                         result = "已清除全部失效记录"
                         AppLog.log("清除失效记录")

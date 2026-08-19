@@ -7,6 +7,7 @@ import org.ahocorasick.trie.Trie;
 import java.util.Collections;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Locale;
 
 /**
  * 字符串转拼音引擎，支持字典和{@link SegmentationSelector}
@@ -55,7 +56,7 @@ final class Engine {
                 // 有以第i个字符作为begin的hit
                 String[] fromDicts = pinyinFromDict(selectedEmits.get(nextHitIndex).getKeyword(), pinyinDictList);
                 for (int j = 0; j < fromDicts.length; j++) {
-                    resultPinyinStrBuf.append(fromDicts[j].toUpperCase());
+                    resultPinyinStrBuf.append(fromDicts[j].toUpperCase(Locale.ROOT));
                     if (j != fromDicts.length - 1) {
                         resultPinyinStrBuf.append(separator);
                     }

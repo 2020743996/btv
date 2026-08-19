@@ -38,7 +38,7 @@ class LogActivity : ComponentActivity() {
 
 @Composable
 fun LogScreen(onBack: () -> Unit) {
-    val logs = remember { AppLog.all() }
+    val logs = remember { AppLog.all().asReversed() }
     val compact = rememberWindowType() == WindowType.COMPACT
 
     Column(

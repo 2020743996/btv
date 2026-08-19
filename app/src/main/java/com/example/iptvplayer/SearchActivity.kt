@@ -135,11 +135,12 @@ fun SearchScreen(
             Spacer(modifier = Modifier.height(10.dp))
             SearchTextField(query, onQueryChange = { query = it })
             Spacer(modifier = Modifier.height(10.dp))
-            SearchHistoryRow(history, onPick = { query = it })
+            if (query.isBlank()) SearchHistoryRow(history, onPick = { query = it })
             SearchResults(
                 query = query,
                 results = results,
                 onPlay = ::play,
+                compact = true,
                 modifier = Modifier.weight(1f)
             )
         }
@@ -183,11 +184,12 @@ fun SearchScreen(
                     }
                 )
                 Spacer(modifier = Modifier.height(10.dp))
-                SearchHistoryRow(history, onPick = { query = it })
+                if (query.isBlank()) SearchHistoryRow(history, onPick = { query = it })
                 SearchResults(
                     query = query,
                     results = results,
                     onPlay = ::play,
+                    compact = false,
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -205,9 +207,7 @@ private fun SearchHeader(channelCount: Int, onClose: () -> Unit) {
     PageHeader(
         title = "搜索频道",
         subtitle = "$channelCount 个频道",
-        actions = {
-            ToolbarAction(UiIcons.X, "关闭", onClose, showLabel = false, accentColor = UiColors.Info)
-        }
+        onBack = onClose
     )
 }
 
@@ -311,6 +311,7 @@ private fun SearchResults(
     query: String,
     results: List<Channel>,
     onPlay: (Channel) -> Unit,
+    compact: Boolean,
     modifier: Modifier = Modifier
 ) {
     if (results.isEmpty()) {
@@ -349,12 +350,14 @@ private fun SearchResults(
                         .padding(horizontal = 12.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = (index + 1).toString().padStart(3, '0'),
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 14.sp,
-                        modifier = Modifier.width(38.dp)
-                    )
+                    if (!compact) {
+                        Text(
+                            text = (index + 1).toString().padStart(3, '0'),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 14.sp,
+                            modifier = Modifier.width(38.dp)
+                        )
+                    }
                     ChannelLogo(channel, size = 44.dp)
                     Spacer(modifier = Modifier.width(11.dp))
                     Column(modifier = Modifier.weight(1f)) {
@@ -365,29 +368,28 @@ private fun SearchResults(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
-                        if (nowPlaying != null) {
-                            Text(
-                                text = nowPlaying,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                fontSize = 12.sp,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        Text(
+                            text = nowPlaying ?: "${channel.urls.size} 条可选线路",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
-                    // 显示线路数量，让用户知道这个频道有几条备用线路
-                    Text(
-                        text = "${channel.urls.size} 线路",
-                        color = MaterialTheme.colorScheme.secondary,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Icon(
-                        UiIcons.Play,
-                        contentDescription = "播放",
-                        tint = if (focused) UiColors.Live
-                        else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    if (!compact) {
+                        Text(
+                            text = "${channel.urls.size} 线路",
+                            color = MaterialTheme.colorScheme.secondary,
+                            fontSize = 13.sp
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Icon(
+                            UiIcons.Play,
+                            contentDescription = "播放",
+                            tint = if (focused) UiColors.Live
+                            else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
                 Spacer(modifier = Modifier.height(4.dp))
             }

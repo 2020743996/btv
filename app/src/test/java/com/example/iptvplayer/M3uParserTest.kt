@@ -89,6 +89,16 @@ class M3uParserTest {
     }
 
     @Test
+    fun extractEpgUrls_supportsMultipleDeclaredSources() {
+        assertEquals(
+            listOf("https://one.example/epg.xml", "https://two.example/epg.xml"),
+            extractEpgUrls(
+                "#EXTM3U x-tvg-url=\"https://one.example/epg.xml,https://two.example/epg.xml\""
+            )
+        )
+    }
+
+    @Test
     fun normalizeChannelName_onlyRemovesQualityAtTheEnd() {
         assertEquals("cctv1", normalizeChannelName("CCTV-1 高清 HD"))
         assertEquals("sportstv", normalizeChannelName("Sports TV"))
@@ -106,6 +116,39 @@ class M3uParserTest {
         ChannelCache.invalidate()
         assertNull(ChannelCache.freshChannels(sources))
         assertTrue(ChannelCache.staleChannels(sources).orEmpty().isNotEmpty())
+    }
+
+    @Test
+    fun channelCache_restoresHiddenLinesAndUpdatesDetectedResolution() {
+        val primary = "https://example.com/hd.m3u8"
+        val backup = "https://example.com/uhd.m3u8"
+        ChannelCache.update(
+            channels = listOf(
+                Channel(
+                    name = "测试频道",
+                    group = "测试",
+                    urls = listOf(primary),
+                    allUrls = listOf(primary, backup)
+                )
+            ),
+            sources = listOf("https://example.com/list.m3u")
+        )
+
+        ChannelCache.restoreLine(
+            backup,
+            LineQuality(backup, usable = true, latencyMs = 80, score = 75)
+        )
+        assertEquals(listOf(backup, primary), ChannelCache.channels.single().urls)
+
+        ChannelCache.updateLineResolution("测试频道", backup, StreamResolution(3840, 2160))
+        assertEquals(
+            StreamResolution(3840, 2160),
+            ChannelCache.channels.single().lineQuality?.first { it.url == backup }?.resolution
+        )
+
+        ChannelCache.restoreAllLines()
+        assertEquals(listOf(primary, backup), ChannelCache.channels.single().urls)
+        assertNull(ChannelCache.channels.single().lineQuality)
     }
 
     @Test

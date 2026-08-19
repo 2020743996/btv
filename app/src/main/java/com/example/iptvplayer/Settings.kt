@@ -132,10 +132,10 @@ private fun ensureFailCountsLoaded(context: Context) {
     }
 }
 
-/** 把内存缓存写回 SharedPreferences（commit 在锁内同步完成，避免并发测速读到旧集合）。 */
+/** 把内存快照异步写回磁盘；进程内读取始终走锁保护的 Map，不需要阻塞调用线程。 */
 private fun flushFailCounts(context: Context) {
     val entries = failCounts.map { (url, count) -> "$url|$count" }.toSet()
-    prefs(context).edit().putStringSet(KEY_FAIL_COUNTS, entries).commit()
+    prefs(context).edit().putStringSet(KEY_FAIL_COUNTS, entries).apply()
 }
 
 /** 读取某条线路的连续失败次数 */
@@ -146,12 +146,20 @@ fun getFailCount(context: Context, url: String): Int = synchronized(failRecordLo
 
 /** 记录一次测速结果：成功清零，失败 +1 */
 fun recordLineResult(context: Context, url: String, success: Boolean) {
+    recordLineResults(context, mapOf(url to success))
+}
+
+/** 批量记录线路结果，只生成并写入一次 SharedPreferences 快照。 */
+fun recordLineResults(context: Context, results: Map<String, Boolean>) {
+    if (results.isEmpty()) return
     synchronized(failRecordLock) {
         ensureFailCountsLoaded(context)
-        if (success) {
-            failCounts.remove(url)
-        } else {
-            failCounts[url] = (failCounts[url] ?: 0) + 1
+        for ((url, success) in results) {
+            if (success) {
+                failCounts.remove(url)
+            } else {
+                failCounts[url] = (failCounts[url] ?: 0) + 1
+            }
         }
         flushFailCounts(context)
     }

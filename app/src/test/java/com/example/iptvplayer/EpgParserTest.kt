@@ -36,4 +36,15 @@ class EpgParserTest {
         assertEquals(current, schedule.current)
         assertNull(schedule.next)
     }
+
+    @Test
+    fun getProgrammeSchedule_matchesChannelIdsIgnoringCaseAndWhitespace() {
+        val now = Date(2_000)
+        val current = Programme("CCTV1", Date(1_000), Date(3_000), "新闻")
+
+        assertEquals(
+            current,
+            getProgrammeSchedule(listOf(current), listOf(" cctv1 "), now).current
+        )
+    }
 }
