@@ -38,6 +38,8 @@ import androidx.compose.ui.unit.sp
 
 enum class ActionRole { DESTRUCTIVE, SECONDARY, PRIMARY }
 
+internal enum class ActionVisualState { DISABLED, HIGHLIGHTED, FOCUSED, DEFAULT }
+
 data class UiAction(
     val label: String,
     val icon: ImageVector? = null,
@@ -53,6 +55,17 @@ internal fun orderActions(actions: List<UiAction>): List<UiAction> =
 internal fun hasValidActionHierarchy(actions: List<UiAction>): Boolean =
     actions.count { it.role == ActionRole.PRIMARY } <= 1
 
+internal fun actionVisualState(
+    enabled: Boolean,
+    highlighted: Boolean,
+    focused: Boolean
+): ActionVisualState = when {
+    !enabled -> ActionVisualState.DISABLED
+    highlighted -> ActionVisualState.HIGHLIGHTED
+    focused -> ActionVisualState.FOCUSED
+    else -> ActionVisualState.DEFAULT
+}
+
 /** 通用操作按钮。语义位置由 ActionBar 或 FormActions 统一管理。 */
 @Composable
 fun ActionButton(
@@ -65,11 +78,23 @@ fun ActionButton(
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
-    val backgroundColor: Brush = when {
-        !enabled -> SolidColor(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
-        highlighted -> SolidColor(accentColor)
-        focused -> SolidColor(accentColor.copy(alpha = 0.14f))
-        else -> SolidColor(Color.White.copy(alpha = 0.84f))
+    val visualState = actionVisualState(enabled, highlighted, focused)
+    val backgroundColor: Brush = when (visualState) {
+        ActionVisualState.DISABLED -> SolidColor(MaterialTheme.colorScheme.surfaceVariant)
+        ActionVisualState.HIGHLIGHTED -> SolidColor(accentColor)
+        ActionVisualState.FOCUSED -> SolidColor(accentColor.copy(alpha = 0.14f))
+        ActionVisualState.DEFAULT -> SolidColor(Color.White.copy(alpha = 0.84f))
+    }
+    val contentColor = when (visualState) {
+        ActionVisualState.DISABLED -> MaterialTheme.colorScheme.onSurfaceVariant
+        ActionVisualState.HIGHLIGHTED -> Color.White
+        ActionVisualState.FOCUSED -> accentColor
+        ActionVisualState.DEFAULT -> MaterialTheme.colorScheme.onSurface
+    }
+    val iconColor = when (visualState) {
+        ActionVisualState.DISABLED -> MaterialTheme.colorScheme.onSurfaceVariant
+        ActionVisualState.HIGHLIGHTED -> Color.White
+        else -> accentColor
     }
     Box(
         modifier = modifier
@@ -81,14 +106,22 @@ fun ActionButton(
                 scaleY = if (focused) 1.03f else 1f
             }
             .shadow(
-                elevation = if (focused) 8.dp else 3.dp,
+                elevation = when (visualState) {
+                    ActionVisualState.DISABLED -> 0.dp
+                    ActionVisualState.FOCUSED -> 8.dp
+                    else -> 3.dp
+                },
                 shape = MaterialTheme.shapes.large,
                 ambientColor = accentColor.copy(alpha = 0.16f),
                 spotColor = accentColor.copy(alpha = 0.14f)
             )
             .border(
                 width = if (focused) 2.dp else 1.dp,
-                color = if (focused) accentColor else Color.White,
+                color = when (visualState) {
+                    ActionVisualState.DISABLED -> MaterialTheme.colorScheme.outline
+                    ActionVisualState.FOCUSED -> accentColor
+                    else -> Color.White
+                },
                 shape = MaterialTheme.shapes.large
             )
             .clickable(enabled = enabled, onClick = onClick)
@@ -96,16 +129,12 @@ fun ActionButton(
             .padding(horizontal = 28.dp),
         contentAlignment = Alignment.Center
     ) {
-        val contentColor = if (highlighted) Color.White
-        else if (focused) accentColor
-        else if (enabled) MaterialTheme.colorScheme.onSurface
-        else MaterialTheme.colorScheme.onSurfaceVariant
         Row(verticalAlignment = Alignment.CenterVertically) {
             if (icon != null) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
-                    tint = if (highlighted) Color.White else accentColor
+                    tint = iconColor
                 )
                 Spacer(modifier = Modifier.width(8.dp))
             }
@@ -134,7 +163,8 @@ fun ActionBar(
         "Each action bar can contain at most one primary action"
     }
     val ordered = orderActions(actions)
-    if (stackOnCompact && rememberWindowType() == WindowType.COMPACT) {
+    val compact = rememberWindowType() == WindowType.COMPACT
+    if (stackOnCompact && compact) {
         Column(
             modifier = modifier.fillMaxWidth(),
             horizontalAlignment = Alignment.End,
@@ -161,6 +191,7 @@ fun ActionBar(
             ordered.forEach { action ->
                 ActionButton(
                     label = action.label,
+                    modifier = if (compact) Modifier.weight(1f) else Modifier,
                     highlighted = action.role == ActionRole.PRIMARY,
                     enabled = action.enabled,
                     icon = action.icon,

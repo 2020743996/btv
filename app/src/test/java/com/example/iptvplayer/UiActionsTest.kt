@@ -32,6 +32,18 @@ class UiActionsTest {
         )
     }
 
+    @Test
+    fun disabledPrimary_usesDisabledVisualState() {
+        assertEquals(
+            ActionVisualState.DISABLED,
+            actionVisualState(enabled = false, highlighted = true, focused = false)
+        )
+        assertEquals(
+            ActionVisualState.HIGHLIGHTED,
+            actionVisualState(enabled = true, highlighted = true, focused = false)
+        )
+    }
+
     private fun action(label: String, role: ActionRole) = UiAction(
         label = label,
         role = role,
