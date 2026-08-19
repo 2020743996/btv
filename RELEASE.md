@@ -1,5 +1,24 @@
 # Release Notes
 
+## v1.4.0 - 2026-08-20
+
+### UI 一致性
+
+- `PageHeader` 统一页面结构：返回固定在左侧，页面级操作固定在右侧。
+- 新增 `ActionBar`、`FormActions`、`DialogFooter` 和 `TableActions` 公共组件，不再由各页面临时排列按钮。
+- 操作栏强制每个区域最多一个主操作，并按照危险、次要、主要的顺序排列，主操作固定在最右侧或窄屏最下方。
+- 统一设置保存、地址编辑、加载重试、播放重试、搜索输入工具和失效线路管理的按钮位置与遥控器焦点顺序。
+- 地址列表行统一在最右侧显示编辑、删除操作；新增地址移动到页面右上角。
+- 在 `AGENTS.md` 固化 UI 一致性规则，约束后续自动化修改继续复用现有 Pattern。
+
+### 验证
+
+- 新增操作排序与唯一主操作测试，20 项单元测试全部通过。
+- `./gradlew testDebugUnitTest`
+- `./gradlew lintDebug`
+- `./gradlew assembleDebug`
+- `./gradlew assembleRelease`
+
 ## v1.3.0 - 2026-08-19
 
 ### 白色液态玻璃 UI

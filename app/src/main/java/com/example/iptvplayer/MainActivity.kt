@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -318,21 +319,21 @@ fun ErrorScreen(message: String, onRetry: () -> Unit, onOpenSettings: () -> Unit
             Spacer(modifier = Modifier.height(10.dp))
             Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp)
             Spacer(modifier = Modifier.height(22.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton(
-                    "重新加载",
-                    highlighted = true,
+            FormActions(
+                primary = UiAction(
+                    label = "重新加载",
                     icon = UiIcons.Refresh,
                     accentColor = UiColors.Refresh,
                     onClick = onRetry
-                )
-                ActionButton(
-                    "去设置",
+                ),
+                secondary = UiAction(
+                    label = "去设置",
                     icon = UiIcons.Sliders,
                     accentColor = UiColors.Settings,
                     onClick = onOpenSettings
-                )
-            }
+                ),
+                modifier = Modifier.widthIn(max = 420.dp)
+            )
         }
     }
 }
@@ -400,22 +401,21 @@ fun ChannelList(
                     vertical = if (isWide) 20.dp else 12.dp
                 )
         ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        "btv",
-                        style = if (isWide) MaterialTheme.typography.headlineLarge
-                        else MaterialTheme.typography.headlineMedium,
-                        color = MaterialTheme.colorScheme.onBackground
-                    )
-                    Text(
-                        "直播频道  ·  ${allChannels.size} 个频道",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = if (isWide) 13.sp else 12.sp
+            PageHeader(
+                title = "btv",
+                subtitle = "直播频道  ·  ${allChannels.size} 个频道",
+                actions = {
+                    TopBarButtons(
+                        elderMode,
+                        isTesting,
+                        testProgress,
+                        onOpenSearch,
+                        onRefresh,
+                        onSpeedTest,
+                        onOpenSettings
                     )
                 }
-                TopBarButtons(elderMode, isTesting, testProgress, onOpenSearch, onRefresh, onSpeedTest, onOpenSettings)
-            }
+            )
 
             val statusMessage = if (isTesting && testProgress != null) {
                 "正在检测线路  ${testProgress.first}/${testProgress.second}"

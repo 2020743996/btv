@@ -68,20 +68,26 @@ fun AddressEditor(
             PageHeader(
                 title = "M3U 地址",
                 subtitle = "多个源会合并同名频道并保留备用线路",
-                onBack = onBack
+                onBack = onBack,
+                actions = {
+                    ToolbarAction(
+                        icon = UiIcons.Plus,
+                        label = "添加",
+                        onClick = {
+                            draft = ""
+                            editingIndex = urls.size
+                        },
+                        showLabel = !compact,
+                        active = true,
+                        accentColor = UiColors.Edit
+                    )
+                }
             )
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            ActionButton("添加新地址", highlighted = true, icon = UiIcons.Plus, accentColor = UiColors.Edit, onClick = {
-                draft = ""
-                editingIndex = urls.size
-            })
-
-            Spacer(modifier = Modifier.height(8.dp))
-
             if (urls.isEmpty()) {
-                Text("（还没有地址，点上面按钮添加）", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp)
+                Text("（还没有地址，请使用右上角添加按钮）", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp)
             }
             urls.forEachIndexed { index, url ->
                 Row(
@@ -105,46 +111,28 @@ fun AddressEditor(
                         modifier = Modifier.weight(1f)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
-                    Icon(
-                        UiIcons.Pencil,
-                        contentDescription = "编辑",
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    TableActions(
+                        onEdit = {
+                            draft = url
+                            editingIndex = index
+                        },
+                        onDelete = { urls = urls.filterIndexed { i, _ -> i != index } }
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .focusable()
-                            .clickable {
-                                urls = urls.filterIndexed { i, _ -> i != index }
-                            }
-                            .background(
-                                MaterialTheme.colorScheme.error.copy(alpha = 0.18f),
-                                MaterialTheme.shapes.small
-                            )
-                            .padding(horizontal = 12.dp, vertical = 6.dp)
-                    ) {
-                        Icon(
-                            UiIcons.Trash,
-                            contentDescription = "删除地址",
-                            tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
-                        )
-                    }
                 }
                 Spacer(modifier = Modifier.height(6.dp))
             }
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                // 保存时过滤空白地址，避免把空串存成无效源。
-                ActionButton(
-                    "保存",
-                    highlighted = true,
+            // 保存时过滤空白地址，避免把空串存成无效源。
+            FormActions(
+                primary = UiAction(
+                    label = "保存",
                     icon = UiIcons.Check,
                     accentColor = UiColors.Edit,
                     onClick = { onSave(urls.filter { it.isNotBlank() }) }
                 )
-            }
+            )
         }
     } else {
         // ===== 编辑模式：输入一个地址 =====
@@ -203,23 +191,12 @@ fun AddressEditor(
 
             Spacer(modifier = Modifier.height(20.dp))
 
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (useTvKeyboard) {
-                    ActionButton(
-                        "删除",
-                        icon = UiIcons.Trash,
-                        accentColor = UiColors.Delete,
-                        onClick = { draft = draft.dropLast(1) }
-                    )
-                }
-                Spacer(modifier = Modifier.weight(1f))
-                ActionButton("取消", icon = UiIcons.X, accentColor = UiColors.Info, onClick = { editingIndex = null })
-                ActionButton(
-                    if (isAdding) "添加" else "确定",
-                    highlighted = true,
-                    enabled = draft.trim().startsWith("http://") || draft.trim().startsWith("https://"),
+            FormActions(
+                primary = UiAction(
+                    label = if (isAdding) "添加" else "确定",
                     icon = UiIcons.Check,
                     accentColor = UiColors.Edit,
+                    enabled = draft.trim().startsWith("http://") || draft.trim().startsWith("https://"),
                     onClick = {
                         val i = editingIndex!!
                         urls = if (i < urls.size) {
@@ -229,8 +206,23 @@ fun AddressEditor(
                         }
                         editingIndex = null
                     }
-                )
-            }
+                ),
+                secondary = UiAction(
+                    label = "取消",
+                    icon = UiIcons.X,
+                    accentColor = UiColors.Info,
+                    onClick = { editingIndex = null }
+                ),
+                destructive = if (useTvKeyboard) {
+                    UiAction(
+                        label = "退格",
+                        icon = UiIcons.ArrowLeft,
+                        accentColor = UiColors.Info,
+                        onClick = { draft = draft.dropLast(1) }
+                    )
+                } else null,
+                stackOnCompact = true
+            )
         }
     }
 }

@@ -73,7 +73,6 @@ fun AdminScreen(
 
         ActionButton(
             "源地址管理",
-            highlighted = true,
             icon = UiIcons.Pencil,
             accentColor = UiColors.Edit,
             onClick = onOpenAddresses

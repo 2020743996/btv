@@ -128,18 +128,25 @@ fun SettingsScreen(onOpenAdmin: () -> Unit, onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton("保存", highlighted = true, icon = UiIcons.Check, accentColor = UiColors.Settings, onClick = {
-                setElderMode(context, elderMode)
-                setFontSize(context, fontSize)
-                // 回到列表页，设置立即生效（onResume 刷新）
-                val activity = context as? SettingsActivity
-                activity?.finish()
-            })
-            ActionButton("取消", icon = UiIcons.X, accentColor = UiColors.Info, onClick = {
-                (context as? SettingsActivity)?.finish()
-            })
-        }
+        FormActions(
+            primary = UiAction(
+                label = "保存",
+                icon = UiIcons.Check,
+                accentColor = UiColors.Settings,
+                onClick = {
+                    setElderMode(context, elderMode)
+                    setFontSize(context, fontSize)
+                    // 回到列表页，设置立即生效（onResume 刷新）
+                    (context as? SettingsActivity)?.finish()
+                }
+            ),
+            secondary = UiAction(
+                label = "取消",
+                icon = UiIcons.X,
+                accentColor = UiColors.Info,
+                onClick = { (context as? SettingsActivity)?.finish() }
+            )
+        )
     }
     }
 }

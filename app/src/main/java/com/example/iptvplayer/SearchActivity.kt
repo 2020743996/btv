@@ -159,22 +159,29 @@ fun SearchScreen(
                     SearchTextField(query, onQueryChange = { query = it })
                 }
                 Spacer(modifier = Modifier.height(8.dp))
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    if (useTvKeyboard) {
-                        ActionButton(
-                            "删除",
-                            icon = UiIcons.Trash,
-                            accentColor = UiColors.Delete,
-                            onClick = { query = query.dropLast(1) }
+                ActionBar(
+                    actions = buildList {
+                        if (useTvKeyboard) {
+                            add(
+                                UiAction(
+                                    label = "退格",
+                                    icon = UiIcons.ArrowLeft,
+                                    accentColor = UiColors.Info,
+                                    onClick = { query = query.dropLast(1) }
+                                )
+                            )
+                        }
+                        add(
+                            UiAction(
+                                label = "清空",
+                                icon = UiIcons.Trash,
+                                accentColor = UiColors.Delete,
+                                role = ActionRole.DESTRUCTIVE,
+                                onClick = { query = "" }
+                            )
                         )
                     }
-                    ActionButton(
-                        "清空",
-                        icon = UiIcons.Trash,
-                        accentColor = UiColors.Delete,
-                        onClick = { query = "" }
-                    )
-                }
+                )
                 Spacer(modifier = Modifier.height(10.dp))
                 SearchHistoryRow(history, onPick = { query = it })
                 SearchResults(
@@ -195,13 +202,13 @@ fun SearchScreen(
 
 @Composable
 private fun SearchHeader(channelCount: Int, onClose: () -> Unit) {
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text("搜索频道", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium)
-            Text("$channelCount 个频道", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
+    PageHeader(
+        title = "搜索频道",
+        subtitle = "$channelCount 个频道",
+        actions = {
+            ToolbarAction(UiIcons.X, "关闭", onClose, showLabel = false, accentColor = UiColors.Info)
         }
-        ToolbarAction(UiIcons.X, "关闭", onClose, showLabel = false, accentColor = UiColors.Info)
-    }
+    )
 }
 
 /** 手机/平板：系统输入法输入框，打开页面自动聚焦弹键盘 */

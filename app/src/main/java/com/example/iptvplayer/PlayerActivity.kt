@@ -512,21 +512,21 @@ fun PlayerScreen(
                     Spacer(modifier = Modifier.height(7.dp))
                     Text(channelName, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(22.dp))
-                    Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ActionButton(
-                            "重新尝试",
-                            highlighted = true,
+                    FormActions(
+                        primary = UiAction(
+                            label = "重新尝试",
                             icon = UiIcons.Refresh,
                             accentColor = UiColors.Refresh,
                             onClick = onRetry
-                        )
-                        ActionButton(
-                            "返回频道",
+                        ),
+                        secondary = UiAction(
+                            label = "返回频道",
                             icon = UiIcons.ArrowLeft,
                             accentColor = UiColors.Info,
                             onClick = onBack
-                        )
-                    }
+                        ),
+                        modifier = Modifier.widthIn(max = 420.dp)
+                    )
                 }
             }
 

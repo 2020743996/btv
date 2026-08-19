@@ -123,40 +123,31 @@ fun DeadChannelScreen(onBack: () -> Unit) {
 
         Spacer(modifier = Modifier.height(12.dp))
 
-        // 窄屏两个长按钮竖排，避免横向溢出
-        if (compact) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton(
-                    if (checking) "检测中…" else "全部重新检测",
+        ActionBar(
+            actions = listOf(
+                UiAction(
+                    label = "清除失效记录",
+                    icon = UiIcons.Trash,
+                    accentColor = UiColors.Delete,
+                    role = ActionRole.DESTRUCTIVE,
+                    onClick = {
+                        clearFailRecords(context)
+                        failRecords = emptyList()
+                        result = "已清除全部失效记录"
+                        AppLog.log("清除失效记录")
+                    }
+                ),
+                UiAction(
+                    label = if (checking) "检测中…" else "全部重新检测",
                     enabled = !checking,
                     icon = UiIcons.Refresh,
                     accentColor = UiColors.Refresh,
+                    role = ActionRole.PRIMARY,
                     onClick = { runRecheck() }
                 )
-                ActionButton("清除失效记录", icon = UiIcons.Trash, accentColor = UiColors.Delete, onClick = {
-                    clearFailRecords(context)
-                    failRecords = emptyList()
-                    result = "已清除全部失效记录"
-                    AppLog.log("清除失效记录")
-                })
-            }
-        } else {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton(
-                    if (checking) "检测中…" else "全部重新检测",
-                    enabled = !checking,
-                    icon = UiIcons.Refresh,
-                    accentColor = UiColors.Refresh,
-                    onClick = { runRecheck() }
-                )
-                ActionButton("清除失效记录", icon = UiIcons.Trash, accentColor = UiColors.Delete, onClick = {
-                    clearFailRecords(context)
-                    failRecords = emptyList()
-                    result = "已清除全部失效记录"
-                    AppLog.log("清除失效记录")
-                })
-            }
-        }
+            ),
+            stackOnCompact = true
+        )
         if (result != null) {
             Text(
                 result!!,
