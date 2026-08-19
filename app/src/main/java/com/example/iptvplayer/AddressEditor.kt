@@ -3,8 +3,6 @@ package com.example.iptvplayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,11 +12,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -62,7 +60,6 @@ fun AddressEditor(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background).systemBarsPaddingCompat()
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = pagePadding, vertical = if (compact) 16.dp else 24.dp)
         ) {
             PageHeader(
@@ -86,43 +83,54 @@ fun AddressEditor(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (urls.isEmpty()) {
-                Text("（还没有地址，请使用右上角添加按钮）", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp)
-            }
-            urls.forEachIndexed { index, url ->
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusable()
-                        .clickable {
-                            draft = url
-                            editingIndex = index
-                        }
-                        .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
-                        .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                if (urls.isEmpty()) {
                     Text(
-                        text = url,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 15.sp,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    TableActions(
-                        onEdit = {
-                            draft = url
-                            editingIndex = index
-                        },
-                        onDelete = { urls = urls.filterIndexed { i, _ -> i != index } }
+                        "（还没有地址，请使用右上角添加按钮）",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 15.sp
                     )
                 }
-                Spacer(modifier = Modifier.height(6.dp))
+                urls.forEachIndexed { index, url ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusable()
+                            .clickable {
+                                draft = url
+                                editingIndex = index
+                            }
+                            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
+                            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = url,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 15.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                            modifier = Modifier.weight(1f)
+                        )
+                        Spacer(modifier = Modifier.width(12.dp))
+                        TableActions(
+                            onEdit = {
+                                draft = url
+                                editingIndex = index
+                            },
+                            onDelete = { urls = urls.filterIndexed { i, _ -> i != index } }
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(6.dp))
+                }
             }
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             // 保存时过滤空白地址，避免把空串存成无效源。
             FormActions(
@@ -139,12 +147,24 @@ fun AddressEditor(
         val isAdding = editingIndex == urls.size
         // 电视优先用系统键盘（Gboard）；没有输入法的盒子才用自绘键盘
         val useTvKeyboard = isTvDevice(context) && !hasSystemIme(context)
+        val normalizedDraft = draft.trim()
+        val canSubmit = normalizedDraft.startsWith("http://") || normalizedDraft.startsWith("https://")
+
+        fun submitDraft() {
+            if (!canSubmit) return
+            val i = editingIndex!!
+            urls = if (i < urls.size) {
+                urls.mapIndexed { j, url -> if (j == i) normalizedDraft else url }
+            } else {
+                urls + normalizedDraft
+            }
+            editingIndex = null
+        }
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background).systemBarsPaddingCompat()
-                .verticalScroll(rememberScrollState())
                 .padding(horizontal = pagePadding, vertical = if (compact) 16.dp else 24.dp)
         ) {
             PageHeader(
@@ -155,57 +175,57 @@ fun AddressEditor(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            if (useTvKeyboard) {
-                Text(
-                    text = if (draft.isEmpty()) "（空）" else draft,
-                    color = if (draft.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                    fontSize = 17.sp,
-                    maxLines = 2,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
-                        .padding(14.dp)
-                )
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+            ) {
+                if (useTvKeyboard) {
+                    Text(
+                        text = if (draft.isEmpty()) "（空）" else draft,
+                        color = if (draft.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
+                        fontSize = 17.sp,
+                        maxLines = 2,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
+                            .padding(14.dp)
+                    )
 
-                Spacer(modifier = Modifier.height(16.dp))
+                    Spacer(modifier = Modifier.height(16.dp))
 
-                TvKeyboard(onKey = { draft += it })
-            } else {
-                val focusRequester = remember { FocusRequester() }
-                OutlinedTextField(
-                    value = draft,
-                    onValueChange = { draft = it },
-                    singleLine = true,
-                    placeholder = { Text("https://example.com/list.m3u") },
-                    keyboardOptions = KeyboardOptions(
-                        imeAction = ImeAction.Done,
-                        keyboardType = KeyboardType.Uri
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .focusRequester(focusRequester)
-                )
-                // 打开即聚焦弹键盘
-                LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                    TvKeyboard(onKey = { draft += it })
+                } else {
+                    val focusRequester = remember { FocusRequester() }
+                    OutlinedTextField(
+                        value = draft,
+                        onValueChange = { draft = it },
+                        singleLine = true,
+                        placeholder = { Text("https://example.com/list.m3u") },
+                        keyboardOptions = KeyboardOptions(
+                            imeAction = ImeAction.Done,
+                            keyboardType = KeyboardType.Uri
+                        ),
+                        keyboardActions = KeyboardActions(onDone = { submitDraft() }),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .focusRequester(focusRequester)
+                    )
+                    // 打开即聚焦弹键盘
+                    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                }
             }
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             FormActions(
                 primary = UiAction(
                     label = if (isAdding) "添加" else "确定",
                     icon = UiIcons.Check,
                     accentColor = UiColors.Info,
-                    enabled = draft.trim().startsWith("http://") || draft.trim().startsWith("https://"),
-                    onClick = {
-                        val i = editingIndex!!
-                        urls = if (i < urls.size) {
-                            urls.mapIndexed { j, u -> if (j == i) draft else u }
-                        } else {
-                            urls + draft
-                        }
-                        editingIndex = null
-                    }
+                    enabled = canSubmit,
+                    onClick = { submitDraft() }
                 ),
                 secondary = UiAction(
                     label = "取消",
@@ -221,7 +241,7 @@ fun AddressEditor(
                         onClick = { draft = draft.dropLast(1) }
                     )
                 } else null,
-                stackOnCompact = true
+                stackOnCompact = useTvKeyboard
             )
         }
     }

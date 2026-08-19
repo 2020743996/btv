@@ -1,5 +1,9 @@
 package com.example.iptvplayer
 
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.graphics.Rect
+import android.graphics.drawable.Drawable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -63,8 +67,12 @@ fun ChannelLogo(
     selected: Boolean = false
 ) {
     var logoLoaded by remember(logoUrl) { mutableStateOf(false) }
-    val background = if (selected) Color.White.copy(alpha = 0.16f)
-    else Color.White
+    var useDarkBackground by remember(logoUrl) { mutableStateOf(false) }
+    val background = when {
+        logoLoaded && useDarkBackground -> Color(0xFF626C76)
+        selected && !logoLoaded -> Color(0xFF626C76)
+        else -> Color.White
+    }
     val foreground = if (selected) Color.White
     else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
@@ -94,8 +102,14 @@ fun ChannelLogo(
                 model = logoUrl,
                 contentDescription = "${name}台标",
                 contentScale = ContentScale.Fit,
-                onSuccess = { logoLoaded = true },
-                onError = { logoLoaded = false },
+                onSuccess = { state ->
+                    logoLoaded = true
+                    useDarkBackground = needsDarkLogoBackground(state.result.drawable)
+                },
+                onError = {
+                    logoLoaded = false
+                    useDarkBackground = false
+                },
                 modifier = Modifier.size(size).padding(5.dp)
             )
         }
@@ -108,6 +122,44 @@ internal fun channelLogoFallback(name: String): String {
     val latinPrefix = compact.takeWhile { it.code <= 127 }
     if (latinPrefix.isNotEmpty()) return latinPrefix.take(3).uppercase()
     return compact.filter { it.code > 127 }.take(2).ifEmpty { "TV" }
+}
+
+private fun needsDarkLogoBackground(drawable: Drawable): Boolean = try {
+    val bitmap = Bitmap.createBitmap(24, 24, Bitmap.Config.ARGB_8888)
+    val previousBounds = Rect(drawable.bounds)
+    try {
+        drawable.setBounds(0, 0, bitmap.width, bitmap.height)
+        drawable.draw(Canvas(bitmap))
+        val pixels = IntArray(bitmap.width * bitmap.height)
+        bitmap.getPixels(pixels, 0, bitmap.width, 0, 0, bitmap.width, bitmap.height)
+        needsDarkLogoBackground(pixels)
+    } finally {
+        drawable.bounds = previousBounds
+        bitmap.recycle()
+    }
+} catch (_: Exception) {
+    false
+}
+
+internal fun needsDarkLogoBackground(pixels: IntArray): Boolean {
+    var visiblePixels = 0
+    var lightPixels = 0
+    var luminanceTotal = 0.0
+    for (pixel in pixels) {
+        val alpha = pixel ushr 24 and 0xFF
+        if (alpha < 48) continue
+        val red = pixel ushr 16 and 0xFF
+        val green = pixel ushr 8 and 0xFF
+        val blue = pixel and 0xFF
+        val luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255.0
+        visiblePixels++
+        luminanceTotal += luminance
+        if (luminance >= 0.82) lightPixels++
+    }
+    if (visiblePixels == 0) return false
+    val lightRatio = lightPixels.toDouble() / visiblePixels
+    val averageLuminance = luminanceTotal / visiblePixels
+    return lightRatio >= 0.55 || averageLuminance >= 0.82
 }
 
 /** 顶部工具栏操作。手机只显示熟悉图标，电视/平板显示图标和文字。 */
