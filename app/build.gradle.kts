@@ -19,8 +19,8 @@ android {
         minSdk = 26
         // targetSdk：针对哪个安卓版本优化
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.0"
+        versionCode = 3
+        versionName = "1.0.1"
     }
 
     // Release 签名：读取不入库的 keystore.properties（含 keystore 路径与密码）。
