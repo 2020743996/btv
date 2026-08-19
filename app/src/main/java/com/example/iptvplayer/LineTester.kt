@@ -10,6 +10,8 @@ import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
 import java.util.concurrent.TimeUnit
 
 private val speedTestClient: OkHttpClient by lazy {
@@ -23,7 +25,7 @@ private val speedTestClient: OkHttpClient by lazy {
  * 线路质量检测器（测速）。
  *
  * 对每条线路做真实的网络请求，结合"本次实测 + 历史失败次数"打分：
- * - 得分高的线路质量好（快、稳），播放时优先用
+ * - 先按分辨率、再按网络得分排序，兼顾清晰度与连接质量
  * - 首次失败的线路标记"疑似失效"（还能用，排后面）
  * - 连续失败 2 次的线路判定"失效"，自动隐藏
  * - 每次测速成功会清零失败计数——线路恢复了就能重新用
@@ -39,14 +41,15 @@ data class LineQuality(
     val url: String,          // 这条线路的地址
     val usable: Boolean,      // true = 本次测速可用
     val latencyMs: Long?,     // 延迟毫秒数（不可用时为 null）
-    val score: Int            // 质量分 0-100：>=70 流畅，30-69 一般，<30 慢/不可用
+    val score: Int,           // 网络分 0-100：>=70 流畅，30-69 一般，<30 慢/不可用
+    val resolution: StreamResolution? = null
 )
 
 /**
  * 检测一个频道的所有线路，返回整理后的频道。
  *
  * 整理规则（"一键优化"的核心逻辑）：
- * 1. 可用线路按分数从高到低排序（最快的在前）
+ * 1. 可用线路优先按分辨率从高到低排序，同分辨率再按网络分排序
  * 2. 只保留前 3 条可用线路（1 条主力 + 2 条备用），避免线路过多
  * 3. 本次失败但历史失败 <2 次的：疑似失效，排到最后但还保留
  * 4. 连续失败达到 2 次的：判定失效，从列表剔除（自动隐藏）
@@ -63,7 +66,7 @@ suspend fun testChannel(
         }.awaitAll()
     }
 
-    val usable = results.filter { it.usable }.sortedByDescending { it.score }
+    val usable = sortUsableLines(results)
     val suspected = results.filter { !it.usable && !isLineDead(context, it.url) }
     val dead = results.filter { !it.usable && isLineDead(context, it.url) }
 
@@ -103,7 +106,7 @@ suspend fun testAllChannels(
     return result
 }
 
-/** 检测一条线路：GET 请求清单，结合实测和历史记录得出分数 */
+/** 检测一条线路：读取有限清单内容，结合分辨率、实测和历史记录得出质量。 */
 suspend fun testLine(context: Context, url: String): LineQuality = withContext(Dispatchers.IO) {
     val request = Request.Builder()
         .url(url)
@@ -116,16 +119,17 @@ suspend fun testLine(context: Context, url: String): LineQuality = withContext(D
             val latency = System.currentTimeMillis() - startTime
             // 2xx / 3xx 都算可用（重定向也是正常的）
             if (response.isSuccessful) {
-                // 读一小部分内容，确认真的能拿到数据（而不是空响应）
-                val firstByteCount = response.body?.byteStream()?.use { stream ->
-                    stream.read(ByteArray(2048))
-                } ?: -1
-                if (firstByteCount > 0) {
+                // 最多读取 64KB：足以覆盖大多数 HLS 主清单，同时避免下载完整媒体。
+                val probe = response.body?.byteStream()?.use { stream ->
+                    stream.readUpTo(RESOLUTION_PROBE_BYTES)
+                } ?: byteArrayOf()
+                if (probe.isNotEmpty()) {
                     // 测速成功：失败计数清零（线路恢复了）
                     recordLineResult(context, url, success = true)
                     // 打分：满分 100，延迟越高扣越多（每 10ms 扣 1 分，最多扣 80）
                     val score = (100 - (latency / 10).toInt()).coerceIn(0, 100)
-                    LineQuality(url, true, latency, score)
+                    val resolution = detectStreamResolution(probe, response.request.url.toString())
+                    LineQuality(url, true, latency, score, resolution)
                 } else {
                     // 有响应但没内容：也算失败
                     recordLineResult(context, url, success = false)
@@ -141,4 +145,19 @@ suspend fun testLine(context: Context, url: String): LineQuality = withContext(D
         recordLineResult(context, url, success = false)
         LineQuality(url, false, null, 0)
     }
+}
+
+private const val RESOLUTION_PROBE_BYTES = 64 * 1024
+
+private fun InputStream.readUpTo(limit: Int): ByteArray {
+    val output = ByteArrayOutputStream(minOf(limit, 8 * 1024))
+    val buffer = ByteArray(4 * 1024)
+    var remaining = limit
+    while (remaining > 0) {
+        val read = read(buffer, 0, minOf(buffer.size, remaining))
+        if (read <= 0) break
+        output.write(buffer, 0, read)
+        remaining -= read
+    }
+    return output.toByteArray()
 }

@@ -140,8 +140,14 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
             groupedChannels = tested.groupBy { it.group }
             ChannelCache.replaceChannels(tested)
             val available = tested.count { channel -> channel.urls.isNotEmpty() }
-            testSummary = "测速完成：$available 个可用，${tested.size - available} 个不可用"
-            AppLog.log("一键测速完成：$available 可用 / ${tested.size} 频道")
+            val resolutionDetected = tested.count { channel ->
+                channel.lineQuality.orEmpty().any { it.usable && it.resolution != null }
+            }
+            testSummary = "测速完成：$available 个可用，$resolutionDetected 个识别清晰度"
+            AppLog.log(
+                "一键测速完成：$available 可用 / ${tested.size} 频道，" +
+                    "$resolutionDetected 个识别清晰度"
+            )
         } catch (e: Exception) {
             testSummary = "测速失败：${e.message ?: "未知错误"}"
             AppLog.log("一键测速失败")
@@ -340,12 +346,13 @@ fun ErrorScreen(message: String, onRetry: () -> Unit, onOpenSettings: () -> Unit
 
 fun channelStatusText(channel: Channel): String? {
     val quality = channel.lineQuality ?: return null
-    val best = quality.filter { it.usable }.maxByOrNull { it.score }
-    return when {
+    val best = sortUsableLines(quality).firstOrNull()
+    val networkStatus = when {
         best == null -> "不可用"
         best.score >= 70 -> "流畅"
         else -> "一般"
     }
+    return if (best?.resolution != null) "${best.resolution.label} · $networkStatus" else networkStatus
 }
 
 private data class ChannelGroup(val key: String, val name: String, val channels: List<Channel>)
@@ -731,9 +738,9 @@ fun ChannelRow(
         }
 
         if (status != null) {
-            val statusColor = when (status) {
-                "流畅" -> MaterialTheme.colorScheme.secondary
-                "一般" -> MaterialTheme.colorScheme.tertiary
+            val statusColor = when {
+                status.endsWith("流畅") -> MaterialTheme.colorScheme.secondary
+                status.endsWith("一般") -> MaterialTheme.colorScheme.tertiary
                 else -> MaterialTheme.colorScheme.error
             }
             Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(statusColor))
