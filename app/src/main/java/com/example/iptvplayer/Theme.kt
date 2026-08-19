@@ -84,16 +84,16 @@ val SoftGradient: Brush = SolidColor(Color(0xFFFFF4F2))
 /**
  * 白色主调 + 功能色配色：
  * - 背景与 Surface 保持纯白
- * - 珊瑚红作为品牌色，青绿、琥珀等颜色区分状态
+ * - 单一蓝色承载普通操作，珊瑚红只用于直播与危险状态
  */
 private val IptvColorScheme = lightColorScheme(
     primary = UiColors.Live,
     onPrimary = Color.White,
     primaryContainer = Color(0xFFFFE1DD),
     onPrimaryContainer = Color(0xFF5B1712),
-    secondary = Color(0xFF167D73),      // 青绿（流畅状态）
+    secondary = UiColors.Accent,
     onSecondary = Color.White,
-    tertiary = Color(0xFFB86A00),       // 琥珀（一般状态）
+    tertiary = Color(0xFF7A6A52),
     onTertiary = Color.White,
     background = Color.White,
     onBackground = Color(0xFF1D211F),
@@ -122,7 +122,7 @@ private val IptvShapes = Shapes(
 )
 
 /**
- * 整个软件的配色主题：白色主调 + 彩色渐变。
+ * 整个软件的配色主题：纯白主调 + 克制的蓝红强调色。
  *
  * fontScale：全局字体缩放（老人模式的三级字体）。
  * 原理：Compose 里所有尺寸（sp/dp）最终都经过 Density 换算成像素，

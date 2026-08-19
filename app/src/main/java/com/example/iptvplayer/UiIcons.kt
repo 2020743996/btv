@@ -64,15 +64,16 @@ object UiIcons {
 }
 
 object UiColors {
+    val Accent = Color(0xFF3D6FA8)
     val Live = Color(0xFFF05A4F)
-    val Search = Color(0xFF3478F6)
-    val Refresh = Color(0xFF149A9A)
-    val Speed = Color(0xFF24A568)
-    val Settings = Color(0xFF7957C8)
-    val Favorite = Color(0xFFE84A7F)
-    val Edit = Color(0xFF3D7BE0)
+    val Search = Accent
+    val Refresh = Accent
+    val Speed = Accent
+    val Settings = Accent
+    val Favorite = Live
+    val Edit = Accent
     val Delete = Color(0xFFD94B55)
-    val Info = Color(0xFF5572B8)
+    val Info = Accent
 }
 
 private fun lineIcon(name: String, vararg paths: String): ImageVector {

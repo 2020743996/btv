@@ -79,7 +79,7 @@ fun AddressEditor(
                         },
                         showLabel = !compact,
                         active = true,
-                        accentColor = UiColors.Edit
+                        accentColor = UiColors.Info
                     )
                 }
             )
@@ -129,7 +129,7 @@ fun AddressEditor(
                 primary = UiAction(
                     label = "保存",
                     icon = UiIcons.Check,
-                    accentColor = UiColors.Edit,
+                    accentColor = UiColors.Info,
                     onClick = { onSave(urls.filter { it.isNotBlank() }) }
                 )
             )
@@ -195,7 +195,7 @@ fun AddressEditor(
                 primary = UiAction(
                     label = if (isAdding) "添加" else "确定",
                     icon = UiIcons.Check,
-                    accentColor = UiColors.Edit,
+                    accentColor = UiColors.Info,
                     enabled = draft.trim().startsWith("http://") || draft.trim().startsWith("https://"),
                     onClick = {
                         val i = editingIndex!!
@@ -210,14 +210,14 @@ fun AddressEditor(
                 secondary = UiAction(
                     label = "取消",
                     icon = UiIcons.X,
-                    accentColor = UiColors.Info,
+                    accentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     onClick = { editingIndex = null }
                 ),
                 destructive = if (useTvKeyboard) {
                     UiAction(
                         label = "退格",
                         icon = UiIcons.ArrowLeft,
-                        accentColor = UiColors.Info,
+                        accentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                         onClick = { draft = draft.dropLast(1) }
                     )
                 } else null,

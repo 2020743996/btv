@@ -6,10 +6,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -37,7 +39,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 
-/** M3U 台标。真实图片置于缩写占位之上，网络失败时占位会自然露出。 */
+/** M3U 台标。加载成功后隐藏缩写占位，避免透明台标透出底层文字。 */
 @Composable
 fun ChannelLogo(
     channel: Channel,
@@ -60,36 +62,40 @@ fun ChannelLogo(
     size: Dp = 48.dp,
     selected: Boolean = false
 ) {
-    val accent = channelAccentColor(name)
+    var logoLoaded by remember(logoUrl) { mutableStateOf(false) }
     val background = if (selected) Color.White.copy(alpha = 0.16f)
-    else accent.copy(alpha = 0.10f)
+    else Color.White
     val foreground = if (selected) Color.White
-    else accent
+    else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = modifier
             .size(size)
             .border(
                 1.dp,
-                if (selected) Color.White.copy(alpha = 0.22f) else accent.copy(alpha = 0.16f),
+                if (selected) Color.White.copy(alpha = 0.22f) else MaterialTheme.colorScheme.outline,
                 MaterialTheme.shapes.medium
             )
             .clip(MaterialTheme.shapes.medium)
             .background(background),
         contentAlignment = Alignment.Center
     ) {
-        Text(
-            text = channelLogoFallback(name),
-            color = foreground,
-            fontSize = if (size >= 52.dp) 14.sp else 11.sp,
-            fontWeight = FontWeight.Bold,
-            maxLines = 1,
-            overflow = TextOverflow.Clip
-        )
+        if (!logoLoaded) {
+            Text(
+                text = channelLogoFallback(name),
+                color = foreground,
+                fontSize = if (size >= 52.dp) 14.sp else 11.sp,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Clip
+            )
+        }
         if (!logoUrl.isNullOrBlank()) {
             AsyncImage(
                 model = logoUrl,
                 contentDescription = "${name}台标",
                 contentScale = ContentScale.Fit,
+                onSuccess = { logoLoaded = true },
+                onError = { logoLoaded = false },
                 modifier = Modifier.size(size).padding(5.dp)
             )
         }
@@ -102,18 +108,6 @@ internal fun channelLogoFallback(name: String): String {
     val latinPrefix = compact.takeWhile { it.code <= 127 }
     if (latinPrefix.isNotEmpty()) return latinPrefix.take(3).uppercase()
     return compact.filter { it.code > 127 }.take(2).ifEmpty { "TV" }
-}
-
-internal fun channelAccentColor(name: String): Color {
-    val palette = listOf(
-        UiColors.Search,
-        UiColors.Live,
-        UiColors.Settings,
-        UiColors.Refresh,
-        Color(0xFFD18A18),
-        UiColors.Favorite
-    )
-    return palette[(name.hashCode() and Int.MAX_VALUE) % palette.size]
 }
 
 /** 顶部工具栏操作。手机只显示熟悉图标，电视/平板显示图标和文字。 */
@@ -178,33 +172,60 @@ fun PageHeader(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
-    actions: @Composable RowScope.() -> Unit = {}
+    actions: (@Composable RowScope.() -> Unit)? = null
 ) {
-    Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
-        if (onBack != null) {
-            ToolbarAction(
-                icon = UiIcons.ArrowLeft,
-                label = "返回",
-                onClick = onBack,
-                showLabel = false,
-                accentColor = UiColors.Info
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-        }
-        Column(modifier = Modifier.weight(1f)) {
-            Text(title, style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onBackground)
-            if (!subtitle.isNullOrBlank()) {
-                Text(
-                    subtitle,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val stackActions = actions != null && shouldStackHeaderActions(maxWidth)
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                if (onBack != null) {
+                    ToolbarAction(
+                        icon = UiIcons.ArrowLeft,
+                        label = "返回",
+                        onClick = onBack,
+                        showLabel = false,
+                        accentColor = UiColors.Info
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        title,
+                        style = MaterialTheme.typography.headlineMedium,
+                        color = MaterialTheme.colorScheme.onBackground,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    if (!subtitle.isNullOrBlank()) {
+                        Text(
+                            subtitle,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+                if (!stackActions && actions != null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        content = actions
+                    )
+                }
+            }
+            if (stackActions) {
+                val stackedActions = requireNotNull(actions)
+                Spacer(modifier = Modifier.height(10.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = stackedActions
                 )
             }
         }
-        Row(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            content = actions
-        )
     }
 }
+
+internal fun shouldStackHeaderActions(width: Dp): Boolean = width < 720.dp

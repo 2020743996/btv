@@ -212,7 +212,7 @@ fun TableActions(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        CompactIconAction(UiIcons.Pencil, "编辑", UiColors.Edit, onEdit)
+        CompactIconAction(UiIcons.Pencil, "编辑", UiColors.Info, onEdit)
         CompactIconAction(UiIcons.Trash, "删除", UiColors.Delete, onDelete)
     }
 }

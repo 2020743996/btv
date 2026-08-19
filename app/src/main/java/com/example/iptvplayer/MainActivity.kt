@@ -386,7 +386,8 @@ fun ChannelList(
     val selectedGroup = groups.firstOrNull { it.key == selectedGroupKey } ?: groups.first()
 
     // 自适应：电视/平板用"左分组 + 右频道"两栏，手机用"顶部横向分组 + 下方列表"单栏。
-    val isWide = rememberWindowType() != WindowType.COMPACT
+    // 手机横屏仍使用单栏，避免 600~840dp 宽度被固定侧栏挤压。
+    val isWide = usesTwoPaneChannelLayout(rememberWindowType())
 
     Box(
         modifier = Modifier
@@ -493,6 +494,9 @@ fun ChannelList(
         }
     }
 }
+
+internal fun usesTwoPaneChannelLayout(windowType: WindowType): Boolean =
+    windowType == WindowType.EXPANDED
 
 /** 顶部操作按钮行（电视放标题右侧，手机窄屏放第二行）。 */
 @Composable
