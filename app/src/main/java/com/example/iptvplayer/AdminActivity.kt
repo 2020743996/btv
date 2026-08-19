@@ -15,10 +15,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
@@ -75,7 +71,13 @@ fun AdminScreen(
 
         Spacer(modifier = Modifier.height(24.dp))
 
-        ActionButton("源地址管理", highlighted = true, icon = Icons.Default.Edit, onClick = onOpenAddresses)
+        ActionButton(
+            "源地址管理",
+            highlighted = true,
+            icon = UiIcons.Pencil,
+            accentColor = UiColors.Edit,
+            onClick = onOpenAddresses
+        )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "添加/修改/删除 M3U 频道源地址",
@@ -85,7 +87,12 @@ fun AdminScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        ActionButton("失效线路管理", icon = Icons.Default.Delete, onClick = onOpenDeadChannels)
+        ActionButton(
+            "失效线路管理",
+            icon = UiIcons.Trash,
+            accentColor = UiColors.Delete,
+            onClick = onOpenDeadChannels
+        )
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "查看被隐藏的失效线路，重新检测或清除记录",
@@ -95,7 +102,7 @@ fun AdminScreen(
 
         Spacer(modifier = Modifier.height(16.dp))
 
-        ActionButton("运行日志", icon = Icons.Default.Info, onClick = onOpenLogs)
+        ActionButton("运行日志", icon = UiIcons.Info, accentColor = UiColors.Info, onClick = onOpenLogs)
         Spacer(modifier = Modifier.height(8.dp))
         Text(
             "最近 100 条运行记录，帮助排查问题",

@@ -32,10 +32,6 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -49,6 +45,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontFamily
@@ -516,8 +513,19 @@ fun PlayerScreen(
                     Text(channelName, color = MaterialTheme.colorScheme.onSurface, fontSize = 14.sp)
                     Spacer(modifier = Modifier.height(22.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                        ActionButton("重新尝试", highlighted = true, icon = Icons.Default.Refresh, onClick = onRetry)
-                        ActionButton("返回频道", icon = Icons.AutoMirrored.Filled.ArrowBack, onClick = onBack)
+                        ActionButton(
+                            "重新尝试",
+                            highlighted = true,
+                            icon = UiIcons.Refresh,
+                            accentColor = UiColors.Refresh,
+                            onClick = onRetry
+                        )
+                        ActionButton(
+                            "返回频道",
+                            icon = UiIcons.ArrowLeft,
+                            accentColor = UiColors.Info,
+                            onClick = onBack
+                        )
                     }
                 }
             }
@@ -529,7 +537,14 @@ fun PlayerScreen(
                 Column(
                     modifier = Modifier
                         .padding(20.dp)
-                        .background(Color(0xD925201B), MaterialTheme.shapes.medium)
+                        .shadow(
+                            14.dp,
+                            MaterialTheme.shapes.large,
+                            ambientColor = Color.Black.copy(alpha = 0.28f),
+                            spotColor = UiColors.Live.copy(alpha = 0.16f)
+                        )
+                        .border(1.dp, Color.White.copy(alpha = 0.28f), MaterialTheme.shapes.large)
+                        .background(Color(0xB8141817), MaterialTheme.shapes.large)
                         .padding(horizontal = 16.dp, vertical = 11.dp)
                         .widthIn(max = 420.dp)
                         .fillMaxWidth(0.9f)
@@ -618,9 +633,17 @@ fun ChannelSelectOverlay(
     }
     Column(
         modifier = Modifier
+            .padding(12.dp)
             .fillMaxHeight()
             .then(panelWidthModifier)
-            .background(Color(0xFFF7F9FF))
+            .shadow(
+                16.dp,
+                MaterialTheme.shapes.large,
+                ambientColor = Color.Black.copy(alpha = 0.22f),
+                spotColor = UiColors.Live.copy(alpha = 0.12f)
+            )
+            .border(1.dp, Color.White, MaterialTheme.shapes.large)
+            .background(Color.White.copy(alpha = 0.92f), MaterialTheme.shapes.large)
             .padding(vertical = 14.dp)
     ) {
         Row(
@@ -658,13 +681,13 @@ fun ChannelSelectOverlay(
                         .heightIn(min = 52.dp)
                         .clickable { onChannelSelected(index) }
                         .background(
-                            if (selected) SolidColor(MaterialTheme.colorScheme.primaryContainer)
+                            if (selected) SolidColor(UiColors.Live.copy(alpha = 0.11f))
                             else SolidColor(Color.Transparent),
                             MaterialTheme.shapes.small
                         )
                         .border(
                             2.dp,
-                            if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            if (selected) UiColors.Live else Color.Transparent,
                             MaterialTheme.shapes.small
                         )
                         .padding(horizontal = 10.dp, vertical = 6.dp),
@@ -699,7 +722,7 @@ fun ChannelSelectOverlay(
                     }
                     if (playing) {
                         Icon(
-                            Icons.Default.PlayArrow,
+                            UiIcons.Play,
                             contentDescription = "正在播放",
                             tint = MaterialTheme.colorScheme.primary
                         )

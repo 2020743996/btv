@@ -24,15 +24,11 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -165,9 +161,19 @@ fun SearchScreen(
                 Spacer(modifier = Modifier.height(8.dp))
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     if (useTvKeyboard) {
-                        ActionButton("删除", onClick = { query = query.dropLast(1) })
+                        ActionButton(
+                            "删除",
+                            icon = UiIcons.Trash,
+                            accentColor = UiColors.Delete,
+                            onClick = { query = query.dropLast(1) }
+                        )
                     }
-                    ActionButton("清空", icon = Icons.Default.Delete, onClick = { query = "" })
+                    ActionButton(
+                        "清空",
+                        icon = UiIcons.Trash,
+                        accentColor = UiColors.Delete,
+                        onClick = { query = "" }
+                    )
                 }
                 Spacer(modifier = Modifier.height(10.dp))
                 SearchHistoryRow(history, onPick = { query = it })
@@ -194,7 +200,7 @@ private fun SearchHeader(channelCount: Int, onClose: () -> Unit) {
             Text("搜索频道", color = MaterialTheme.colorScheme.onBackground, style = MaterialTheme.typography.headlineMedium)
             Text("$channelCount 个频道", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 13.sp)
         }
-        ToolbarAction(Icons.Default.Close, "关闭", onClose, showLabel = false)
+        ToolbarAction(UiIcons.X, "关闭", onClose, showLabel = false, accentColor = UiColors.Info)
     }
 }
 
@@ -207,15 +213,20 @@ private fun SearchTextField(query: String, onQueryChange: (String) -> Unit) {
         onValueChange = onQueryChange,
         singleLine = true,
         placeholder = { Text("输入频道名或拼音，如：hnws") },
-        leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+        leadingIcon = { Icon(UiIcons.Search, contentDescription = null, tint = UiColors.Search) },
         trailingIcon = {
             if (query.isNotEmpty()) {
                 IconButton(onClick = { onQueryChange("") }) {
-                    Icon(Icons.Default.Close, contentDescription = "清空搜索")
+                    Icon(UiIcons.X, contentDescription = "清空搜索", tint = UiColors.Delete)
                 }
             }
         },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = UiColors.Search,
+            focusedLeadingIconColor = UiColors.Search,
+            cursorColor = UiColors.Search
+        ),
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(focusRequester)
@@ -265,14 +276,14 @@ private fun HistoryChip(word: String, onClick: () -> Unit) {
             .onFocusChanged { focused = it.isFocused }
             .focusable()
             .border(
-                2.dp,
-                if (focused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                if (focused) 2.dp else 1.dp,
+                if (focused) UiColors.Search else Color.White,
                 MaterialTheme.shapes.small
             )
             .clickable(onClick = onClick)
             .background(
-                if (focused) SolidColor(MaterialTheme.colorScheme.primaryContainer)
-                else SolidColor(MaterialTheme.colorScheme.surfaceVariant),
+                if (focused) SolidColor(UiColors.Search.copy(alpha = 0.10f))
+                else SolidColor(Color.White.copy(alpha = 0.82f)),
                 MaterialTheme.shapes.small
             )
             .padding(horizontal = 14.dp),
@@ -280,7 +291,7 @@ private fun HistoryChip(word: String, onClick: () -> Unit) {
     ) {
         Text(
             word,
-            color = if (focused) MaterialTheme.colorScheme.onPrimaryContainer
+            color = if (focused) UiColors.Search
             else MaterialTheme.colorScheme.onSurface,
             fontSize = 13.sp,
             maxLines = 1
@@ -319,8 +330,8 @@ private fun SearchResults(
                         .onFocusChanged { focused = it.isFocused }
                         .focusable()
                         .border(
-                            2.dp,
-                            if (focused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                            if (focused) 2.dp else 1.dp,
+                            if (focused) UiColors.Search else MaterialTheme.colorScheme.outline,
                             MaterialTheme.shapes.small
                         )
                         .clickable { onPlay(channel) }
@@ -365,9 +376,9 @@ private fun SearchResults(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Icon(
-                        Icons.Default.PlayArrow,
+                        UiIcons.Play,
                         contentDescription = "播放",
-                        tint = if (focused) MaterialTheme.colorScheme.primary
+                        tint = if (focused) UiColors.Live
                         else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }

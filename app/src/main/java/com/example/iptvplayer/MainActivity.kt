@@ -30,15 +30,6 @@ import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.FavoriteBorder
-import androidx.compose.material.icons.filled.PlayArrow
-import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -54,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -292,7 +284,7 @@ fun FirstRunScreen(onAddSource: () -> Unit) {
                 textAlign = TextAlign.Center
             )
             Spacer(modifier = Modifier.height(24.dp))
-            ActionButton("添加频道源", highlighted = true, icon = Icons.Default.Add, onClick = onAddSource)
+            ActionButton("添加频道源", highlighted = true, icon = UiIcons.Plus, onClick = onAddSource)
         }
     }
 }
@@ -327,8 +319,19 @@ fun ErrorScreen(message: String, onRetry: () -> Unit, onOpenSettings: () -> Unit
             Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 15.sp)
             Spacer(modifier = Modifier.height(22.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                ActionButton("重新加载", highlighted = true, icon = Icons.Default.Refresh, onClick = onRetry)
-                ActionButton("去设置", icon = Icons.Default.Settings, onClick = onOpenSettings)
+                ActionButton(
+                    "重新加载",
+                    highlighted = true,
+                    icon = UiIcons.Refresh,
+                    accentColor = UiColors.Refresh,
+                    onClick = onRetry
+                )
+                ActionButton(
+                    "去设置",
+                    icon = UiIcons.Sliders,
+                    accentColor = UiColors.Settings,
+                    onClick = onOpenSettings
+                )
             }
         }
     }
@@ -431,7 +434,13 @@ fun ChannelList(
                 // ===== 电视/平板：左分组 + 右频道 两栏 =====
                 Row(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
-                        modifier = Modifier.width(220.dp).fillMaxHeight(),
+                        modifier = Modifier
+                            .width(220.dp)
+                            .fillMaxHeight()
+                            .shadow(8.dp, MaterialTheme.shapes.large)
+                            .border(1.dp, Color.White, MaterialTheme.shapes.large)
+                            .background(Color.White.copy(alpha = 0.84f), MaterialTheme.shapes.large)
+                            .padding(8.dp),
                         contentPadding = PaddingValues(bottom = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
@@ -503,18 +512,25 @@ private fun TopBarButtons(
         else if (isTesting) "测速中" else "测速"
     }
     Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)) {
-        ToolbarAction(Icons.Default.Search, "搜索", onOpenSearch, showLabel = !compact)
-        ToolbarAction(Icons.Default.Refresh, "刷新", onRefresh, showLabel = !compact)
+        ToolbarAction(UiIcons.Search, "搜索", onOpenSearch, showLabel = !compact, accentColor = UiColors.Search)
+        ToolbarAction(UiIcons.Refresh, "刷新", onRefresh, showLabel = !compact, accentColor = UiColors.Refresh)
         if (!elderMode) {
             ToolbarAction(
-                icon = Icons.Default.CheckCircle,
+                icon = UiIcons.Gauge,
                 label = testLabel(),
                 enabled = !isTesting,
                 onClick = onSpeedTest,
-                showLabel = !compact
+                showLabel = !compact,
+                accentColor = UiColors.Speed
             )
         }
-        ToolbarAction(Icons.Default.Settings, "设置", onOpenSettings, showLabel = !compact)
+        ToolbarAction(
+            UiIcons.Sliders,
+            "设置",
+            onOpenSettings,
+            showLabel = !compact,
+            accentColor = UiColors.Settings
+        )
     }
 }
 
@@ -574,22 +590,29 @@ private fun GroupChip(name: String, count: Int, selected: Boolean, onClick: () -
             .height(40.dp)
             .onFocusChanged { focused = it.isFocused }
             .focusable()
+            .shadow(
+                elevation = if (focused) 7.dp else 2.dp,
+                shape = MaterialTheme.shapes.large,
+                ambientColor = UiColors.Live.copy(alpha = 0.14f),
+                spotColor = UiColors.Live.copy(alpha = 0.12f)
+            )
             .border(
-                2.dp,
-                if (focused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                MaterialTheme.shapes.small
+                if (focused) 2.dp else 1.dp,
+                if (focused) UiColors.Live else Color.White,
+                MaterialTheme.shapes.large
             )
             .clickable(onClick = onClick)
             .background(
-                if (selected) BrandGradient else SolidColor(MaterialTheme.colorScheme.surfaceVariant),
-                MaterialTheme.shapes.small
+                if (selected) SolidColor(UiColors.Live.copy(alpha = 0.12f))
+                else SolidColor(Color.White.copy(alpha = 0.82f)),
+                MaterialTheme.shapes.large
             )
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             "$name $count",
-            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurface,
+            color = if (selected) UiColors.Live else MaterialTheme.colorScheme.onSurface,
             fontSize = 14.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -608,13 +631,14 @@ private fun GroupRow(name: String, count: Int, selected: Boolean, onClick: () ->
             .onFocusChanged { focused = it.isFocused }
             .focusable()
             .border(
-                2.dp,
-                if (focused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                if (focused) 2.dp else 1.dp,
+                if (focused) UiColors.Live else Color.White,
                 MaterialTheme.shapes.small
             )
             .clickable(onClick = onClick)
             .background(
-                if (active) SolidColor(MaterialTheme.colorScheme.surface) else SolidColor(Color.Transparent),
+                if (active) SolidColor(UiColors.Live.copy(alpha = 0.08f))
+                else SolidColor(Color.Transparent),
                 MaterialTheme.shapes.small
             )
             .padding(horizontal = 14.dp, vertical = 10.dp),
@@ -630,7 +654,7 @@ private fun GroupRow(name: String, count: Int, selected: Boolean, onClick: () ->
         Spacer(modifier = Modifier.width(10.dp))
         Text(
             name,
-            color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (selected) UiColors.Live else MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 15.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
@@ -664,8 +688,8 @@ fun ChannelRow(
             .onFocusChanged { isFocused = it.isFocused }
             .focusable()
             .border(
-                2.dp,
-                if (isFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
+                if (isFocused) 2.dp else 1.dp,
+                if (isFocused) UiColors.Live else MaterialTheme.colorScheme.outline,
                 MaterialTheme.shapes.small
             )
             .clickable(onClick = onClick)
@@ -730,24 +754,24 @@ fun ChannelRow(
                 )
                 .clickable(onClick = onToggleFavorite)
                 .background(
-                    if (isFavorite) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                    if (isFavorite) UiColors.Favorite.copy(alpha = 0.12f)
                     else Color.Transparent,
                     MaterialTheme.shapes.small
                 ),
             contentAlignment = Alignment.Center
         ) {
             Icon(
-                imageVector = if (isFavorite) Icons.Default.Favorite else Icons.Default.FavoriteBorder,
+                imageVector = UiIcons.Heart,
                 contentDescription = if (isFavorite) "取消收藏" else "收藏",
-                tint = if (isFavorite) MaterialTheme.colorScheme.primary
+                tint = if (isFavorite) UiColors.Favorite
                 else MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.size(21.dp)
             )
         }
         Icon(
-            imageVector = Icons.Default.PlayArrow,
+            imageVector = UiIcons.Play,
             contentDescription = "播放",
-            tint = if (isFocused) MaterialTheme.colorScheme.primary
+            tint = if (isFocused) UiColors.Live
             else MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.size(22.dp)
         )

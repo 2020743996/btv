@@ -1,14 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- btv 图标：直播红电视屏幕与白色播放键。 -->
+<!-- btv 图标：白色玻璃电视、彩色功能线与直播播放键。 -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
     <path
-        android:fillColor="#D43D32"
-        android:pathData="M29,38 h50 a8,8 0,0 1,8 8 v30 a8,8 0,0 1,-8 8 h-50 a8,8 0,0 1,-8 -8 v-30 a8,8 0,0 1,8 -8 z" />
+        android:fillColor="#E8F0FF"
+        android:pathData="M32,41 h50 a8,8 0,0 1,8 8 v30 a8,8 0,0 1,-8 8 h-50 a8,8 0,0 1,-8 -8 v-30 a8,8 0,0 1,8 -8 z" />
     <path
         android:fillColor="#FFFFFF"
+        android:strokeColor="#3478F6"
+        android:strokeWidth="2.2"
+        android:pathData="M27,36 h50 a8,8 0,0 1,8 8 v30 a8,8 0,0 1,-8 8 h-50 a8,8 0,0 1,-8 -8 v-30 a8,8 0,0 1,8 -8 z" />
+    <path
+        android:fillColor="#F05A4F"
         android:pathData="M47,50 L47,72 L67,61 z" />
+    <path
+        android:fillColor="#149A9A"
+        android:pathData="M71,44a3,3 0,1 0,6 0a3,3 0,1 0,-6 0" />
+    <path
+        android:fillColor="#7957C8"
+        android:pathData="M63,44a3,3 0,1 0,6 0a3,3 0,1 0,-6 0" />
 </vector>

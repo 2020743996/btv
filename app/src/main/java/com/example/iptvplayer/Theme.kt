@@ -75,24 +75,19 @@ fun hasSystemIme(context: Context): Boolean {
     return imm.enabledInputMethodList.isNotEmpty()
 }
 
-/**
- * 品牌渐变：靛蓝 → 玫红 的多彩渐变。
- * 用于标题文字、高亮按钮、选中态等，突出"彩色渐变"的设计语言。
- */
-val BrandGradient: Brush = SolidColor(Color(0xFFD43D32))
+/** 品牌强调色，用于标题、高亮按钮和选中态。 */
+val BrandGradient: Brush = SolidColor(UiColors.Live)
+
+/** 柔和强调底色，用于小面积选中态和状态提示。 */
+val SoftGradient: Brush = SolidColor(Color(0xFFFFF4F2))
 
 /**
- * 柔和渐变（比 BrandGradient 略淡）：用于大面积背景/卡片点缀。
- */
-val SoftGradient: Brush = SolidColor(Color(0xFFFFECE9))
-
-/**
- * 白色主调 + 彩色渐变的配色：
- * - 主背景 浅蓝白，卡片纯白，文字深蓝黑（对比清晰）
- * - 主色 靛蓝，状态色 青绿/琥珀/玫红
+ * 白色主调 + 功能色配色：
+ * - 背景与 Surface 保持纯白
+ * - 珊瑚红作为品牌色，青绿、琥珀等颜色区分状态
  */
 private val IptvColorScheme = lightColorScheme(
-    primary = Color(0xFFD43D32),        // 直播红
+    primary = UiColors.Live,
     onPrimary = Color.White,
     primaryContainer = Color(0xFFFFE1DD),
     onPrimaryContainer = Color(0xFF5B1712),
@@ -100,13 +95,13 @@ private val IptvColorScheme = lightColorScheme(
     onSecondary = Color.White,
     tertiary = Color(0xFFB86A00),       // 琥珀（一般状态）
     onTertiary = Color.White,
-    background = Color(0xFFF4F5F2),
+    background = Color.White,
     onBackground = Color(0xFF1D211F),
     surface = Color.White,
     onSurface = Color(0xFF1D211F),
-    surfaceVariant = Color(0xFFE8EBE7),
-    onSurfaceVariant = Color(0xFF656B67),
-    outline = Color(0xFFCCD1CC),
+    surfaceVariant = Color(0xFFF5F6F7),
+    onSurfaceVariant = Color(0xFF66707A),
+    outline = Color(0xFFE1E5E8),
     error = Color(0xFFB3261E),
     onError = Color.White
 )

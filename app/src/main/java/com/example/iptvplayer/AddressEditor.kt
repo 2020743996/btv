@@ -20,13 +20,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -80,7 +73,7 @@ fun AddressEditor(
 
             Spacer(modifier = Modifier.height(16.dp))
 
-            ActionButton("添加新地址", highlighted = true, icon = Icons.Default.Add, onClick = {
+            ActionButton("添加新地址", highlighted = true, icon = UiIcons.Plus, accentColor = UiColors.Edit, onClick = {
                 draft = ""
                 editingIndex = urls.size
             })
@@ -113,7 +106,7 @@ fun AddressEditor(
                     )
                     Spacer(modifier = Modifier.width(12.dp))
                     Icon(
-                        Icons.Default.Edit,
+                        UiIcons.Pencil,
                         contentDescription = "编辑",
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -131,7 +124,7 @@ fun AddressEditor(
                             .padding(horizontal = 12.dp, vertical = 6.dp)
                     ) {
                         Icon(
-                            Icons.Default.Delete,
+                            UiIcons.Trash,
                             contentDescription = "删除地址",
                             tint = MaterialTheme.colorScheme.error.copy(alpha = 0.85f)
                         )
@@ -144,7 +137,13 @@ fun AddressEditor(
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 // 保存时过滤空白地址，避免把空串存成无效源。
-                ActionButton("保存", highlighted = true, icon = Icons.Default.Check, onClick = { onSave(urls.filter { it.isNotBlank() }) })
+                ActionButton(
+                    "保存",
+                    highlighted = true,
+                    icon = UiIcons.Check,
+                    accentColor = UiColors.Edit,
+                    onClick = { onSave(urls.filter { it.isNotBlank() }) }
+                )
             }
         }
     } else {
@@ -206,15 +205,21 @@ fun AddressEditor(
 
             Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
                 if (useTvKeyboard) {
-                    ActionButton("删除", icon = Icons.Default.Delete, onClick = { draft = draft.dropLast(1) })
+                    ActionButton(
+                        "删除",
+                        icon = UiIcons.Trash,
+                        accentColor = UiColors.Delete,
+                        onClick = { draft = draft.dropLast(1) }
+                    )
                 }
                 Spacer(modifier = Modifier.weight(1f))
-                ActionButton("取消", icon = Icons.Default.Close, onClick = { editingIndex = null })
+                ActionButton("取消", icon = UiIcons.X, accentColor = UiColors.Info, onClick = { editingIndex = null })
                 ActionButton(
                     if (isAdding) "添加" else "确定",
                     highlighted = true,
                     enabled = draft.trim().startsWith("http://") || draft.trim().startsWith("https://"),
-                    icon = Icons.Default.Check,
+                    icon = UiIcons.Check,
+                    accentColor = UiColors.Edit,
                     onClick = {
                         val i = editingIndex!!
                         urls = if (i < urls.size) {

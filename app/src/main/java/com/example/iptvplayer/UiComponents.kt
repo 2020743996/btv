@@ -16,8 +16,6 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -26,6 +24,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -60,13 +59,19 @@ fun ChannelLogo(
     size: Dp = 48.dp,
     selected: Boolean = false
 ) {
+    val accent = channelAccentColor(name)
     val background = if (selected) Color.White.copy(alpha = 0.16f)
-    else MaterialTheme.colorScheme.surfaceVariant
+    else accent.copy(alpha = 0.10f)
     val foreground = if (selected) Color.White
-    else MaterialTheme.colorScheme.onSurfaceVariant
+    else accent
     Box(
         modifier = modifier
             .size(size)
+            .border(
+                1.dp,
+                if (selected) Color.White.copy(alpha = 0.22f) else accent.copy(alpha = 0.16f),
+                MaterialTheme.shapes.medium
+            )
             .clip(MaterialTheme.shapes.medium)
             .background(background),
         contentAlignment = Alignment.Center
@@ -98,6 +103,18 @@ internal fun channelLogoFallback(name: String): String {
     return compact.filter { it.code > 127 }.take(2).ifEmpty { "TV" }
 }
 
+internal fun channelAccentColor(name: String): Color {
+    val palette = listOf(
+        UiColors.Search,
+        UiColors.Live,
+        UiColors.Settings,
+        UiColors.Refresh,
+        Color(0xFFD18A18),
+        UiColors.Favorite
+    )
+    return palette[(name.hashCode() and Int.MAX_VALUE) % palette.size]
+}
+
 /** 顶部工具栏操作。手机只显示熟悉图标，电视/平板显示图标和文字。 */
 @Composable
 fun ToolbarAction(
@@ -107,29 +124,35 @@ fun ToolbarAction(
     modifier: Modifier = Modifier,
     showLabel: Boolean = true,
     enabled: Boolean = true,
-    active: Boolean = false
+    active: Boolean = false,
+    accentColor: Color = UiColors.Live
 ) {
     var focused by remember { mutableStateOf(false) }
     val emphasized = focused || active
     val background = when {
-        !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-        emphasized -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.surface
+        !enabled -> Color.White.copy(alpha = 0.55f)
+        emphasized -> accentColor.copy(alpha = 0.13f)
+        else -> Color.White.copy(alpha = 0.82f)
     }
-    val contentColor = if (emphasized) MaterialTheme.colorScheme.onPrimary
-    else MaterialTheme.colorScheme.onSurface
+    val contentColor = if (enabled) accentColor else MaterialTheme.colorScheme.onSurfaceVariant
     Row(
         modifier = modifier
             .height(44.dp)
             .onFocusChanged { focused = it.isFocused }
             .focusable(enabled)
+            .shadow(
+                elevation = if (focused) 8.dp else 3.dp,
+                shape = MaterialTheme.shapes.large,
+                ambientColor = accentColor.copy(alpha = 0.18f),
+                spotColor = accentColor.copy(alpha = 0.16f)
+            )
             .border(
-                width = 2.dp,
-                color = if (focused) MaterialTheme.colorScheme.onBackground else Color.Transparent,
-                shape = MaterialTheme.shapes.small
+                width = if (focused) 2.dp else 1.dp,
+                color = if (focused) accentColor else Color.White,
+                shape = MaterialTheme.shapes.large
             )
             .clickable(enabled = enabled, onClick = onClick)
-            .background(background, MaterialTheme.shapes.small)
+            .background(background, MaterialTheme.shapes.large)
             .padding(horizontal = if (showLabel) 12.dp else 10.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
@@ -139,7 +162,7 @@ fun ToolbarAction(
             Spacer(modifier = Modifier.width(7.dp))
             Text(
                 text = label,
-                color = contentColor,
+                color = MaterialTheme.colorScheme.onSurface,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.Medium,
                 maxLines = 1
@@ -158,10 +181,11 @@ fun PageHeader(
     Row(modifier = modifier, verticalAlignment = Alignment.CenterVertically) {
         if (onBack != null) {
             ToolbarAction(
-                icon = Icons.AutoMirrored.Filled.ArrowBack,
+                icon = UiIcons.ArrowLeft,
                 label = "返回",
                 onClick = onBack,
-                showLabel = false
+                showLabel = false,
+                accentColor = UiColors.Info
             )
             Spacer(modifier = Modifier.width(12.dp))
         }

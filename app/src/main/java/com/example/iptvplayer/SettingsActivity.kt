@@ -17,10 +17,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -91,7 +88,14 @@ fun SettingsScreen(onOpenAdmin: () -> Unit, onBack: () -> Unit) {
                     fontSize = 13.sp
                 )
             }
-            Switch(checked = elderMode, onCheckedChange = { elderMode = it })
+            Switch(
+                checked = elderMode,
+                onCheckedChange = { elderMode = it },
+                colors = SwitchDefaults.colors(
+                    checkedTrackColor = UiColors.Settings,
+                    checkedThumbColor = androidx.compose.ui.graphics.Color.White
+                )
+            )
         }
 
         Spacer(modifier = Modifier.height(14.dp))
@@ -100,9 +104,9 @@ fun SettingsScreen(onOpenAdmin: () -> Unit, onBack: () -> Unit) {
         Text("字体大小", color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
         Spacer(modifier = Modifier.height(6.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton("标准", highlighted = fontSize == 0, onClick = { fontSize = 0 })
-            ActionButton("大", highlighted = fontSize == 1, onClick = { fontSize = 1 })
-            ActionButton("特大", highlighted = fontSize == 2, onClick = { fontSize = 2 })
+            ActionButton("标准", highlighted = fontSize == 0, accentColor = UiColors.Settings, onClick = { fontSize = 0 })
+            ActionButton("大", highlighted = fontSize == 1, accentColor = UiColors.Settings, onClick = { fontSize = 1 })
+            ActionButton("特大", highlighted = fontSize == 2, accentColor = UiColors.Settings, onClick = { fontSize = 2 })
         }
 
         // ===== 管理员模式入口（老人模式隐藏，防止误操作） =====
@@ -114,20 +118,25 @@ fun SettingsScreen(onOpenAdmin: () -> Unit, onBack: () -> Unit) {
                 fontSize = 13.sp
             )
             Spacer(modifier = Modifier.height(8.dp))
-            ActionButton("进入频道管理", icon = Icons.Default.Settings, onClick = onOpenAdmin)
+            ActionButton(
+                "进入频道管理",
+                icon = UiIcons.Sliders,
+                accentColor = UiColors.Settings,
+                onClick = onOpenAdmin
+            )
         }
 
         Spacer(modifier = Modifier.height(24.dp))
 
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            ActionButton("保存", highlighted = true, icon = Icons.Default.Check, onClick = {
+            ActionButton("保存", highlighted = true, icon = UiIcons.Check, accentColor = UiColors.Settings, onClick = {
                 setElderMode(context, elderMode)
                 setFontSize(context, fontSize)
                 // 回到列表页，设置立即生效（onResume 刷新）
                 val activity = context as? SettingsActivity
                 activity?.finish()
             })
-            ActionButton("取消", icon = Icons.Default.Close, onClick = {
+            ActionButton("取消", icon = UiIcons.X, accentColor = UiColors.Info, onClick = {
                 (context as? SettingsActivity)?.finish()
             })
         }

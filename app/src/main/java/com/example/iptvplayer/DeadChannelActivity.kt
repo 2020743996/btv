@@ -16,9 +16,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -132,10 +129,11 @@ fun DeadChannelScreen(onBack: () -> Unit) {
                 ActionButton(
                     if (checking) "检测中…" else "全部重新检测",
                     enabled = !checking,
-                    icon = Icons.Default.Refresh,
+                    icon = UiIcons.Refresh,
+                    accentColor = UiColors.Refresh,
                     onClick = { runRecheck() }
                 )
-                ActionButton("清除失效记录", icon = Icons.Default.Delete, onClick = {
+                ActionButton("清除失效记录", icon = UiIcons.Trash, accentColor = UiColors.Delete, onClick = {
                     clearFailRecords(context)
                     failRecords = emptyList()
                     result = "已清除全部失效记录"
@@ -147,10 +145,11 @@ fun DeadChannelScreen(onBack: () -> Unit) {
                 ActionButton(
                     if (checking) "检测中…" else "全部重新检测",
                     enabled = !checking,
-                    icon = Icons.Default.Refresh,
+                    icon = UiIcons.Refresh,
+                    accentColor = UiColors.Refresh,
                     onClick = { runRecheck() }
                 )
-                ActionButton("清除失效记录", icon = Icons.Default.Delete, onClick = {
+                ActionButton("清除失效记录", icon = UiIcons.Trash, accentColor = UiColors.Delete, onClick = {
                     clearFailRecords(context)
                     failRecords = emptyList()
                     result = "已清除全部失效记录"
