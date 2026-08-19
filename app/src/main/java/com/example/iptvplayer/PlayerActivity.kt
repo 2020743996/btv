@@ -60,15 +60,17 @@ import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.datasource.DefaultDataSource
-import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.okhttp.OkHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
+import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
 import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 enum class PlayerUiState { LOADING, PLAYING, ERROR }
 
@@ -89,6 +91,7 @@ class PlayerActivity : ComponentActivity() {
     private var channelLogoUrl by mutableStateOf<String?>(null)
     private var currentAttemptUrl: String? = null
     private var currentAttemptLastResult: Boolean? = null
+    private var playbackStartedForAttempt = false
 
     // 左侧悬浮频道选择面板：DPAD_LEFT 呼出，面板内上下移动、OK 播放、BACK/LEFT 关闭。
     private var channelListVisible by mutableStateOf(false)
@@ -96,7 +99,13 @@ class PlayerActivity : ComponentActivity() {
 
     private val playbackTimeout = Runnable {
         if (playerState == PlayerUiState.LOADING) {
-            tryNextLine("连接超时")
+            tryNextLine(if (playbackStartedForAttempt) "缓冲超时" else "连接超时")
+        }
+    }
+
+    private val markPlaybackStable = Runnable {
+        if (playerState == PlayerUiState.PLAYING) {
+            recordCurrentAttempt(success = true)
         }
     }
 
@@ -125,23 +134,29 @@ class PlayerActivity : ComponentActivity() {
         channelTvgIds = initialChannel?.tvgIds ?: emptyList()
         channelLogoUrl = initialChannel?.logoUrl
 
-        val httpFactory = DefaultHttpDataSource.Factory()
+        val playbackHttpClient = sharedHttpClient.newBuilder()
+            .readTimeout(30, TimeUnit.SECONDS)
+            .retryOnConnectionFailure(true)
+            .build()
+        val httpFactory = OkHttpDataSource.Factory(playbackHttpClient)
             .setUserAgent(APP_USER_AGENT)
-            .setConnectTimeoutMs(10_000)
-            .setReadTimeoutMs(15_000)
-            .setAllowCrossProtocolRedirects(true)
         val dataSourceFactory = DefaultDataSource.Factory(this, httpFactory)
         val loadControl = DefaultLoadControl.Builder()
             .setBufferDurationsMs(
-                2_500,  // 直播保留较短缓冲，换台更快
-                15_000,
-                800,
-                1_500
+                PlaybackTuning.MIN_BUFFER_MS,
+                PlaybackTuning.MAX_BUFFER_MS,
+                PlaybackTuning.START_BUFFER_MS,
+                PlaybackTuning.REBUFFER_MS
             )
+            .setBackBuffer(PlaybackTuning.BACK_BUFFER_MS, true)
             .build()
+        val mediaSourceFactory = DefaultMediaSourceFactory(dataSourceFactory)
+            .setLoadErrorHandlingPolicy(
+                DefaultLoadErrorHandlingPolicy(PlaybackTuning.LOAD_RETRY_COUNT)
+            )
 
         player = ExoPlayer.Builder(this)
-            .setMediaSourceFactory(DefaultMediaSourceFactory(dataSourceFactory))
+            .setMediaSourceFactory(mediaSourceFactory)
             .setLoadControl(loadControl)
             .build()
             .also { exoPlayer ->
@@ -151,14 +166,21 @@ class PlayerActivity : ComponentActivity() {
                         when (state) {
                             Player.STATE_READY -> {
                                 cancelPlaybackTimeout()
-                                recordCurrentAttempt(success = true)
+                                playbackStartedForAttempt = true
                                 playerState = PlayerUiState.PLAYING
+                                loadingMessage = ""
+                                scheduleStablePlaybackMark()
                                 showChannelInfoBriefly()
                             }
                             Player.STATE_BUFFERING -> if (playerState != PlayerUiState.ERROR) {
+                                mainHandler.removeCallbacks(markPlaybackStable)
                                 playerState = PlayerUiState.LOADING
-                                mainHandler.removeCallbacks(playbackTimeout)
-                                mainHandler.postDelayed(playbackTimeout, PLAYBACK_TIMEOUT_MS)
+                                loadingMessage = if (playbackStartedForAttempt) {
+                                    "网络波动，正在补充缓冲…"
+                                } else {
+                                    "正在连接直播源…"
+                                }
+                                schedulePlaybackTimeout()
                             }
                             Player.STATE_ENDED -> tryNextLine("直播已中断")
                             Player.STATE_IDLE -> Unit
@@ -300,6 +322,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private fun startFromFirst() {
+        urls = prioritizePlaybackUrls(urls) { url -> getFailCount(this, url) }
         currentLineIndex = 0
         if (urls.isEmpty()) {
             showPlaybackError("这个频道暂时没有可用线路，请稍后再试")
@@ -332,14 +355,16 @@ class PlayerActivity : ComponentActivity() {
         channelInfoVisible = true
         currentAttemptUrl = url
         currentAttemptLastResult = null
+        playbackStartedForAttempt = false
+        mainHandler.removeCallbacks(markPlaybackStable)
 
         val mediaItem = MediaItem.Builder()
             .setUri(url)
             .setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
-                    .setTargetOffsetMs(3_500)
+                    .setTargetOffsetMs(PlaybackTuning.LIVE_TARGET_OFFSET_MS)
                     .setMinPlaybackSpeed(0.97f)
-                    .setMaxPlaybackSpeed(1.03f)
+                    .setMaxPlaybackSpeed(1.0f)
                     .build()
             )
             .build()
@@ -348,7 +373,7 @@ class PlayerActivity : ComponentActivity() {
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
         exoPlayer.playWhenReady = true
-        mainHandler.postDelayed(playbackTimeout, PLAYBACK_TIMEOUT_MS)
+        schedulePlaybackTimeout()
     }
 
     /** 每次播放尝试只记一次结果，避免错误回调和超时回调重复累计。 */
@@ -362,6 +387,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun showPlaybackError(message: String) {
         cancelPlaybackTimeout()
+        mainHandler.removeCallbacks(markPlaybackStable)
         player?.stop()
         errorMessage = message
         playerState = PlayerUiState.ERROR
@@ -377,19 +403,36 @@ class PlayerActivity : ComponentActivity() {
         mainHandler.removeCallbacks(playbackTimeout)
     }
 
+    private fun schedulePlaybackTimeout() {
+        mainHandler.removeCallbacks(playbackTimeout)
+        mainHandler.postDelayed(
+            playbackTimeout,
+            PlaybackTuning.timeoutMs(playbackStartedForAttempt)
+        )
+    }
+
+    private fun scheduleStablePlaybackMark() {
+        mainHandler.removeCallbacks(markPlaybackStable)
+        if (currentAttemptLastResult != true) {
+            mainHandler.postDelayed(markPlaybackStable, PlaybackTuning.STABLE_PLAYBACK_MS)
+        }
+    }
+
     override fun onStart() {
         super.onStart()
         if (playerState != PlayerUiState.ERROR) {
             player?.play()
             if (playerState == PlayerUiState.LOADING) {
-                mainHandler.removeCallbacks(playbackTimeout)
-                mainHandler.postDelayed(playbackTimeout, PLAYBACK_TIMEOUT_MS)
+                schedulePlaybackTimeout()
+            } else if (playerState == PlayerUiState.PLAYING) {
+                scheduleStablePlaybackMark()
             }
         }
     }
 
     override fun onStop() {
         cancelPlaybackTimeout()
+        mainHandler.removeCallbacks(markPlaybackStable)
         mainHandler.removeCallbacks(hideChannelInfo)
         player?.pause()
         super.onStop()
@@ -405,7 +448,6 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         private const val EXTRA_URLS = "channel_urls"
         private const val EXTRA_NAME = "channel_name"
-        private const val PLAYBACK_TIMEOUT_MS = 12_000L
         private const val CHANNEL_INFO_DURATION_MS = 4_000L
 
         fun createIntent(context: Context, channel: Channel): Intent =

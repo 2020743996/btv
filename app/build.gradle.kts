@@ -19,8 +19,8 @@ android {
         minSdk = 26
         // targetSdk：针对哪个安卓版本优化
         targetSdk = 35
-        versionCode = 8
-        versionName = "1.5.0"
+        versionCode = 9
+        versionName = "1.6.0"
     }
 
     // Release 签名：读取不入库的 keystore.properties（含 keystore 路径与密码）。
@@ -79,6 +79,7 @@ dependencies {
     // Media3 ExoPlayer：Google 官方播放器，支持 HLS（m3u8）直播流
     implementation("androidx.media3:media3-exoplayer:1.5.0")
     implementation("androidx.media3:media3-exoplayer-hls:1.5.0")
+    implementation("androidx.media3:media3-datasource-okhttp:1.5.0")
     implementation("androidx.media3:media3-ui:1.5.0")
 
     // OkHttp：发送网络请求，下载 M3U 文件
