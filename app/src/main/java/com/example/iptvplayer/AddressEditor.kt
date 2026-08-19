@@ -65,20 +65,7 @@ fun AddressEditor(
             PageHeader(
                 title = "M3U 地址",
                 subtitle = "多个源会合并同名频道并保留备用线路",
-                onBack = onBack,
-                actions = {
-                    ToolbarAction(
-                        icon = UiIcons.Plus,
-                        label = "添加",
-                        onClick = {
-                            draft = ""
-                            editingIndex = urls.size
-                        },
-                        showLabel = !compact,
-                        active = true,
-                        accentColor = UiColors.Info
-                    )
-                }
+                onBack = onBack
             )
 
             Spacer(modifier = Modifier.height(16.dp))
@@ -91,7 +78,7 @@ fun AddressEditor(
             ) {
                 if (urls.isEmpty()) {
                     Text(
-                        "（还没有地址，请使用右上角添加按钮）",
+                        "（还没有地址，请使用底部添加按钮）",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         fontSize = 15.sp
                     )
@@ -139,6 +126,15 @@ fun AddressEditor(
                     icon = UiIcons.Check,
                     accentColor = UiColors.Info,
                     onClick = { onSave(urls.filter { it.isNotBlank() }) }
+                ),
+                secondary = UiAction(
+                    label = "添加",
+                    icon = UiIcons.Plus,
+                    accentColor = UiColors.Info,
+                    onClick = {
+                        draft = ""
+                        editingIndex = urls.size
+                    }
                 )
             )
         }
