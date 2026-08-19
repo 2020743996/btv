@@ -78,4 +78,26 @@ class M3uParserTest {
         assertNull(ChannelCache.freshChannels(sources))
         assertTrue(ChannelCache.staleChannels(sources).orEmpty().isNotEmpty())
     }
+
+    @Test
+    fun orderedStringListEncoding_preservesOrderAndRemovesBlankDuplicates() {
+        val values = listOf(
+            " https://one.example/list.m3u ",
+            "",
+            "https://two.example/list.m3u",
+            "https://one.example/list.m3u"
+        )
+
+        val encodedText = encodeOrderedStringList(values)
+
+        assertEquals(
+            listOf("https://one.example/list.m3u", "https://two.example/list.m3u"),
+            decodeOrderedStringList(encodedText)
+        )
+    }
+
+    @Test
+    fun orderedStringListDecoding_returnsEmptyListForBrokenData() {
+        assertEquals(emptyList<String>(), decodeOrderedStringList("not encoded"))
+    }
 }

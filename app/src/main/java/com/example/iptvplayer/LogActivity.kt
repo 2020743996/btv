@@ -29,7 +29,7 @@ class LogActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            IptvPlayerTheme {
+            IptvPlayerTheme(fontScale = fontScaleFor(getFontSize(this))) {
                 LogScreen(onBack = { finish() })
             }
         }

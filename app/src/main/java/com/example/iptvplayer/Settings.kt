@@ -3,6 +3,7 @@ package com.example.iptvplayer
 import android.content.Context
 import android.content.SharedPreferences
 import org.json.JSONArray
+import java.util.Base64
 
 /**
  * 软件里的"本地设置"都通过这个文件读写。
@@ -20,6 +21,7 @@ import org.json.JSONArray
 
 private const val PREFS_NAME = "iptv_settings"
 private const val KEY_M3U_URLS = "m3u_urls"
+private const val KEY_M3U_URLS_ORDERED = "m3u_urls_ordered"
 private const val KEY_FAVORITES = "favorite_channels"
 private const val KEY_FAIL_COUNTS = "line_fail_counts"
 private const val KEY_ELDER_MODE = "elder_mode"
@@ -33,15 +35,44 @@ private fun prefs(context: Context): SharedPreferences =
 
 /** 读取保存的所有 M3U 地址；没设置过就返回空列表（首次使用需要手动添加源） */
 fun getM3uUrls(context: Context): List<String> {
-    // StringSet 不保证顺序，但线路顺序不影响功能（播放时按质量排序）
-    return prefs(context).getStringSet(KEY_M3U_URLS, emptySet()).orEmpty().toList()
+    val p = prefs(context)
+    p.getString(KEY_M3U_URLS_ORDERED, null)?.let { encodedText ->
+        return decodeOrderedStringList(encodedText)
+    }
+    // 兼容旧版本：历史数据用 StringSet 存储，无法保证顺序，但仍要能读出来。
+    return p.getStringSet(KEY_M3U_URLS, emptySet()).orEmpty().toList()
 }
 
-/** 保存 M3U 地址列表（自动去重） */
+/** 保存 M3U 地址列表（自动去重并保留用户添加顺序） */
 fun saveM3uUrls(context: Context, urls: List<String>) {
+    val normalized = normalizeOrderedStringList(urls)
     prefs(context).edit()
-        .putStringSet(KEY_M3U_URLS, urls.toSet())
+        .putString(KEY_M3U_URLS_ORDERED, encodeOrderedStringList(normalized))
+        // 继续写旧键，方便从旧版升级/回退时仍能读到地址。
+        .putStringSet(KEY_M3U_URLS, normalized.toSet())
         .apply() // apply：异步写盘，不卡界面
+}
+
+fun normalizeOrderedStringList(values: List<String>): List<String> =
+    values.map { it.trim() }.filter { it.isNotEmpty() }.distinct()
+
+fun encodeOrderedStringList(values: List<String>): String =
+    normalizeOrderedStringList(values).joinToString(separator = "\n") { value ->
+        Base64.getUrlEncoder().encodeToString(value.toByteArray(Charsets.UTF_8))
+    }
+
+fun decodeOrderedStringList(encodedText: String): List<String> = try {
+    if (encodedText.isBlank()) {
+        emptyList()
+    } else {
+        normalizeOrderedStringList(
+            encodedText.lineSequence().map { encoded ->
+                String(Base64.getUrlDecoder().decode(encoded), Charsets.UTF_8)
+            }.toList()
+        )
+    }
+} catch (e: Exception) {
+    emptyList()
 }
 
 /** 读取收藏的频道名集合 */

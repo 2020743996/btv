@@ -31,7 +31,7 @@ class AdminActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            IptvPlayerTheme {
+            IptvPlayerTheme(fontScale = fontScaleFor(getFontSize(this))) {
                 AdminScreen(
                     onOpenAddresses = {
                         startActivity(Intent(this, AddressActivity::class.java))

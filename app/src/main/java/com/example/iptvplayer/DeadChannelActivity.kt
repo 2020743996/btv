@@ -41,7 +41,7 @@ class DeadChannelActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
 
         setContent {
-            IptvPlayerTheme {
+            IptvPlayerTheme(fontScale = fontScaleFor(getFontSize(this))) {
                 DeadChannelScreen(onBack = { finish() })
             }
         }
