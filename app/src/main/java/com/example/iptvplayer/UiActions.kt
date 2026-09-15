@@ -3,7 +3,6 @@ package com.example.iptvplayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -100,7 +99,6 @@ fun ActionButton(
         modifier = modifier
             .height(48.dp)
             .onFocusChanged { focused = it.isFocused }
-            .focusable(enabled)
             .graphicsLayer {
                 scaleX = if (focused) 1.03f else 1f
                 scaleY = if (focused) 1.03f else 1f
@@ -267,7 +265,6 @@ private fun CompactIconAction(
         modifier = Modifier
             .size(40.dp)
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
             .border(
                 if (focused) 2.dp else 1.dp,
                 if (focused) accentColor else accentColor.copy(alpha = 0.16f),

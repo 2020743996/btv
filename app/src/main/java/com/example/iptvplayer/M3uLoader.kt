@@ -24,6 +24,7 @@ val sharedHttpClient: OkHttpClient by lazy {
     OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(60, TimeUnit.SECONDS)
+        .callTimeout(60, TimeUnit.SECONDS)
         .retryOnConnectionFailure(true)
         .build()
 }
@@ -44,7 +45,7 @@ suspend fun downloadM3u(url: String): String = withContext(Dispatchers.IO) {
         .header("Accept", "application/x-mpegURL, application/xml, text/plain, */*")
         .build()
 
-    sharedHttpClient.newCall(request).execute().use { response ->
+    sharedHttpClient.newCall(request).readCancellable { response ->
         // 2xx 之外的响应都视为失败（比如 404 文件不存在、503 服务器繁忙）
         if (!response.isSuccessful) {
             throw IOException("下载失败：HTTP ${response.code}")

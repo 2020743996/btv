@@ -69,7 +69,11 @@ import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
+import androidx.compose.ui.platform.LocalContext
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 
@@ -107,7 +111,7 @@ class PlayerActivity : ComponentActivity() {
     }
 
     private val markPlaybackStable = Runnable {
-        if (playerState == PlayerUiState.PLAYING) {
+        if (playerState == PlayerUiState.PLAYING && player?.isPlaying == true) {
             recordCurrentAttempt(success = true)
         }
     }
@@ -139,6 +143,8 @@ class PlayerActivity : ComponentActivity() {
 
         val playbackHttpClient = sharedHttpClient.newBuilder()
             .readTimeout(30, TimeUnit.SECONDS)
+            // 直播媒体连接可以持续数小时，仅清单/测速使用总请求时限。
+            .callTimeout(0, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
         val httpFactory = OkHttpDataSource.Factory(playbackHttpClient)
@@ -202,6 +208,14 @@ class PlayerActivity : ComponentActivity() {
                     override fun onVideoSizeChanged(videoSize: VideoSize) {
                         updatePlaybackResolution(videoSize.width, videoSize.height)
                     }
+
+                    override fun onIsPlayingChanged(isPlaying: Boolean) {
+                        if (isPlaying && lifecycle.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                            scheduleStablePlaybackMark()
+                        } else {
+                            mainHandler.removeCallbacks(markPlaybackStable)
+                        }
+                    }
                 })
             }
 
@@ -233,22 +247,27 @@ class PlayerActivity : ComponentActivity() {
         startFromFirst()
     }
 
+    /** 换台/选台的公共入口：更新当前频道状态、记录最近观看并从头开始播放。 */
+    private fun startChannel(channel: Channel, index: Int, total: Int, action: String) {
+        channelListVisible = false
+        channelIndex = index
+        channelName = channel.name
+        channelTvgIds = channel.tvgIds
+        channelLogoUrl = channel.logoUrl
+        urls = channel.urls
+        totalChannels = total
+        addRecentChannel(this, channel.name)
+        AppLog.log("$action：$channelName（${index + 1}/$total）")
+        startFromFirst()
+    }
+
     private fun switchChannel(delta: Int) {
         val allChannels = ChannelCache.channels
         if (allChannels.isEmpty()) return
 
         val current = if (channelIndex in allChannels.indices) channelIndex else 0
         val newIndex = ((current + delta) % allChannels.size + allChannels.size) % allChannels.size
-        val newChannel = allChannels[newIndex]
-        channelIndex = newIndex
-        channelName = newChannel.name
-        channelTvgIds = newChannel.tvgIds
-        channelLogoUrl = newChannel.logoUrl
-        urls = newChannel.urls
-        totalChannels = allChannels.size
-        addRecentChannel(this, newChannel.name)
-        AppLog.log("换台：$channelName（${channelIndex + 1}/$totalChannels）")
-        startFromFirst()
+        startChannel(allChannels[newIndex], newIndex, allChannels.size, "换台")
     }
 
     // PlayerView 会优先消费方向键，因此需要在 Activity 最外层拦截换台按键。
@@ -318,17 +337,7 @@ class PlayerActivity : ComponentActivity() {
     private fun playChannelAt(index: Int) {
         val allChannels = ChannelCache.channels
         if (index !in allChannels.indices) return
-        channelListVisible = false
-        val newChannel = allChannels[index]
-        channelIndex = index
-        channelName = newChannel.name
-        channelTvgIds = newChannel.tvgIds
-        channelLogoUrl = newChannel.logoUrl
-        urls = newChannel.urls
-        totalChannels = allChannels.size
-        addRecentChannel(this, newChannel.name)
-        AppLog.log("选台：$channelName（${channelIndex + 1}/$totalChannels）")
-        startFromFirst()
+        startChannel(allChannels[index], index, allChannels.size, "选台")
         // 切换后短暂显示新频道信息，让用户确认已换台。
         showChannelInfoBriefly()
     }
@@ -440,7 +449,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun scheduleStablePlaybackMark() {
         mainHandler.removeCallbacks(markPlaybackStable)
-        if (currentAttemptLastResult != true) {
+        if (currentAttemptLastResult != true && player?.isPlaying == true) {
             mainHandler.postDelayed(markPlaybackStable, PlaybackTuning.STABLE_PLAYBACK_MS)
         }
     }
@@ -507,6 +516,16 @@ fun PlayerScreen(
     onBack: () -> Unit
 ) {
     var epgRefreshTick by remember { mutableIntStateOf(0) }
+    val lifecycle = (LocalContext.current as ComponentActivity).lifecycle
+    LaunchedEffect(lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                refreshConfiguredEpg()
+                epgRefreshTick++
+                delay(60_000)
+            }
+        }
+    }
     LaunchedEffect(channelTvgIds, channelInfoVisible, channelListVisible) {
         if (!channelInfoVisible && !channelListVisible) return@LaunchedEffect
         // EPG 可能在进入播放页后才下载完成，先快速刷新两次，之后按节目单粒度刷新。
@@ -808,5 +827,7 @@ fun ChannelSelectOverlay(
     }
 }
 
+private val programmeTimeFormat = DateTimeFormatter.ofPattern("HH:mm", Locale.ROOT)
+
 private fun formatProgrammeTime(programme: Programme): String =
-    SimpleDateFormat("HH:mm", Locale.getDefault()).format(programme.start)
+    programmeTimeFormat.format(programme.start.toInstant().atZone(ZoneId.systemDefault()))

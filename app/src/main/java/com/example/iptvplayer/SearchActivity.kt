@@ -6,7 +6,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,7 +27,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -100,11 +98,14 @@ fun SearchScreen(
         allChannels.map { it to channelSearchKeys(it.name) }
     }
     val results = remember(query, channelsWithKeys) {
-        if (query.isBlank()) {
+        // 每次按键只归一化一次查询词，逐频道匹配复用（原来每个频道各做一次正则替换）。
+        val normalizedQuery = normalizeQuery(query)
+        if (normalizedQuery.isEmpty()) {
             emptyList()
         } else {
             channelsWithKeys.mapNotNull { (channel, keys) ->
-                matchTier(query, keys)?.let { tier -> Triple(channel, keys.normalized, tier) }
+                matchNormalizedTier(normalizedQuery, keys)
+                    ?.let { tier -> Triple(channel, keys.normalized, tier) }
             }
                 .sortedWith(compareBy({ it.third.rank }, { it.second }))
                 .map { it.first }
@@ -229,11 +230,7 @@ private fun SearchTextField(query: String, onQueryChange: (String) -> Unit) {
             }
         },
         keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-        colors = OutlinedTextFieldDefaults.colors(
-            focusedBorderColor = UiColors.Search,
-            focusedLeadingIconColor = UiColors.Search,
-            cursorColor = UiColors.Search
-        ),
+        colors = standardTextFieldColors(),
         modifier = Modifier
             .fillMaxWidth()
             .focusRequester(focusRequester)
@@ -281,7 +278,6 @@ private fun HistoryChip(word: String, onClick: () -> Unit) {
         modifier = Modifier
             .height(36.dp)
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
             .border(
                 if (focused) 2.dp else 1.dp,
                 if (focused) UiColors.Search else Color.White,
@@ -336,7 +332,6 @@ private fun SearchResults(
                         .fillMaxWidth()
                         .heightIn(min = 58.dp)
                         .onFocusChanged { focused = it.isFocused }
-                        .focusable()
                         .border(
                             if (focused) 2.dp else 1.dp,
                             if (focused) UiColors.Search else MaterialTheme.colorScheme.outline,

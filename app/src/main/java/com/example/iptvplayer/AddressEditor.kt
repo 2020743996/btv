@@ -1,275 +1,189 @@
 package com.example.iptvplayer
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/**
- * 源地址编辑器：查看/添加/修改/删除 M3U 地址列表。
- * 放在"管理员模式"里使用（源地址属于管理员操作，普通用户不接触）。
- * 交互：点“添加”用软键盘输入；点地址行修改；点行尾删除图标移除。
- */
+private val AddressStateSaver = listSaver<AddressEditorState, Any>(
+    save = { listOf(ArrayList(it.savedUrls), ArrayList(it.urls), it.editingIndex, it.draft,
+        it.error.orEmpty(), it.confirmation.name, it.deleteIndex) },
+    restore = {
+        @Suppress("UNCHECKED_CAST")
+        AddressEditorState(it[0] as List<String>, it[1] as List<String>, it[2] as Int,
+            it[3] as String, (it[4] as String).ifEmpty { null },
+            AddressConfirmation.valueOf(it[5] as String), it[6] as Int)
+    }
+)
+
 @Composable
-fun AddressEditor(
-    initialUrls: List<String>,
-    onSave: (List<String>) -> Unit,
-    onBack: () -> Unit
-) {
-    var urls by remember { mutableStateOf(initialUrls) }
-    // 编辑模式状态：null = 浏览列表；数字 = 正在修改第几个地址
-    var editingIndex by remember { mutableStateOf<Int?>(null) }
-    var draft by remember { mutableStateOf("") }
+fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onBack: () -> Unit) {
+    var state by rememberSaveable(stateSaver = AddressStateSaver) {
+        mutableStateOf(AddressEditorState(initialUrls))
+    }
     val context = LocalContext.current
+    val focus = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     val compact = rememberWindowType() == WindowType.COMPACT
-    val pagePadding = if (compact) 16.dp else 32.dp
+    val useTvKeyboard = isTvDevice(context) && !hasSystemIme(context)
 
-    if (editingIndex == null) {
-        // ===== 浏览模式 =====
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background).systemBarsPaddingCompat()
-                .padding(horizontal = pagePadding, vertical = if (compact) 16.dp else 24.dp)
-        ) {
-            PageHeader(
-                title = "M3U 地址",
-                subtitle = "多个源会合并同名频道并保留备用线路",
-                onBack = onBack
-            )
+    fun back() {
+        if (!state.editing && !state.dirty) onBack()
+        else state = state.requestBack()
+    }
+    fun submit() {
+        state = state.submit()
+        if (!state.editing) {
+            focus.clearFocus()
+            keyboard?.hide()
+        }
+    }
+    BackHandler(enabled = state.editing || state.dirty) { back() }
 
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                if (urls.isEmpty()) {
-                    Text(
-                        "（还没有地址，请使用底部添加按钮）",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 15.sp
-                    )
-                }
-                urls.forEachIndexed { index, url ->
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusable()
-                            .clickable {
-                                draft = url
-                                editingIndex = index
-                            }
-                            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
-                            .padding(start = 16.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = url,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            fontSize = 15.sp,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Spacer(modifier = Modifier.width(12.dp))
-                        TableActions(
-                            onEdit = {
-                                draft = url
-                                editingIndex = index
-                            },
-                            onDelete = { urls = urls.filterIndexed { i, _ -> i != index } }
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(6.dp))
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // 保存时过滤空白地址，避免把空串存成无效源。
-            FormActions(
-                primary = UiAction(
-                    label = "保存",
-                    icon = UiIcons.Check,
-                    accentColor = UiColors.Info,
-                    onClick = { onSave(urls.filter { it.isNotBlank() }) }
-                ),
-                secondary = UiAction(
-                    label = "添加",
-                    icon = UiIcons.Plus,
-                    accentColor = UiColors.Info,
-                    onClick = {
-                        draft = ""
-                        editingIndex = urls.size
-                    }
+    BoxWithConstraints(
+        modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
+            .systemBarsPaddingCompat()
+    ) {
+        val shortWindow = maxHeight < 220.dp
+        LaunchedEffect(state.error) {
+            // 短屏校验失败时收起键盘，确保错误信息完整可见。
+            if (shortWindow && state.error != null) keyboard?.hide()
+        }
+        Column(Modifier.fillMaxSize().padding(
+            horizontal = if (compact) 16.dp else 24.dp,
+            vertical = if (shortWindow) 4.dp else 12.dp
+        )) {
+            if (!state.editing) {
+                PageHeader(
+                    title = "M3U 地址",
+                    subtitle = "${state.urls.size} 个源 · ${if (state.dirty) "未保存" else "已保存"}",
+                    onBack = { back() }
                 )
-            )
-        }
-    } else {
-        // ===== 编辑模式：输入一个地址 =====
-        val isAdding = editingIndex == urls.size
-        var validationRequested by remember(editingIndex) { mutableStateOf(false) }
-        // 电视优先用系统键盘（Gboard）；没有输入法的盒子才用自绘键盘
-        val useTvKeyboard = isTvDevice(context) && !hasSystemIme(context)
-        val normalizedDraft = draft.trim()
-        val canSubmit = isSupportedM3uUrl(normalizedDraft)
-
-        fun submitDraft() {
-            if (!canSubmit) {
-                validationRequested = true
-                return
-            }
-            val i = editingIndex!!
-            urls = if (i < urls.size) {
-                urls.mapIndexed { j, url -> if (j == i) normalizedDraft else url }
-            } else {
-                urls + normalizedDraft
-            }
-            validationRequested = false
-            editingIndex = null
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background).systemBarsPaddingCompat()
-                .padding(horizontal = pagePadding, vertical = if (compact) 16.dp else 24.dp)
-        ) {
-            PageHeader(
-                title = if (isAdding) "添加频道源" else "修改频道源",
-                subtitle = "输入以 http:// 或 https:// 开头的 M3U 地址",
-                onBack = { editingIndex = null }
-            )
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .verticalScroll(rememberScrollState())
-            ) {
-                if (useTvKeyboard) {
-                    Text(
-                        text = if (draft.isEmpty()) "（空）" else draft,
-                        color = if (draft.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface,
-                        fontSize = 17.sp,
-                        maxLines = 2,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surface, MaterialTheme.shapes.small)
-                            .padding(14.dp)
-                    )
-
-                    Spacer(modifier = Modifier.height(16.dp))
-
-                    TvKeyboard(onKey = { draft += it })
-                    if (validationRequested) {
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            "请输入以 http:// 或 https:// 开头的完整地址",
-                            color = MaterialTheme.colorScheme.error,
-                            fontSize = 13.sp
-                        )
+                Spacer(Modifier.height(12.dp))
+                LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
+                    if (state.urls.isEmpty()) item {
+                        Text("暂无频道源", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
-                } else {
-                    val focusRequester = remember { FocusRequester() }
-                    OutlinedTextField(
-                        value = draft,
-                        onValueChange = {
-                            draft = it
-                            validationRequested = false
-                        },
-                        singleLine = true,
-                        placeholder = { Text("https://example.com/list.m3u") },
-                        isError = validationRequested,
-                        supportingText = if (validationRequested) {
-                            {
-                                Text("请输入以 http:// 或 https:// 开头的完整地址")
-                            }
-                        } else null,
-                        keyboardOptions = KeyboardOptions(
-                            imeAction = ImeAction.Done,
-                            keyboardType = KeyboardType.Uri
-                        ),
-                        keyboardActions = KeyboardActions(onDone = { submitDraft() }),
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .focusRequester(focusRequester)
+                    itemsIndexed(state.urls) { index, url ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { state = state.edit(index) }
+                                .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(url, modifier = Modifier.weight(1f), fontSize = 15.sp,
+                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Spacer(Modifier.width(8.dp))
+                            TableActions(
+                                onEdit = { state = state.edit(index) },
+                                onDelete = { state = state.copy(confirmation = AddressConfirmation.DELETE, deleteIndex = index) }
+                            )
+                        }
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                FormActions(
+                    primary = UiAction("保存", icon = UiIcons.Check, accentColor = UiColors.Info,
+                        onClick = { onSave(state.urls) }),
+                    secondary = UiAction("添加", icon = UiIcons.Plus, accentColor = UiColors.Info,
+                        onClick = { state = state.edit(state.urls.size) })
+                )
+            } else {
+                // 标题随输入区滚动，为横屏键盘上方的固定提交区优先留出空间。
+                Column(Modifier.weight(1f).fillMaxWidth().verticalScroll(rememberScrollState())) {
+                    if (!shortWindow) {
+                        PageHeader(title = if (state.adding) "添加频道源" else "修改频道源", onBack = { back() })
+                        Spacer(Modifier.height(12.dp))
+                    }
+                    if (useTvKeyboard) {
+                        Text(state.draft.ifEmpty { "（空）" }, fontSize = 17.sp, maxLines = 3,
+                            overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth().padding(12.dp))
+                        state.error?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 13.sp) }
+                        TvKeyboard(onKey = { state = state.changeDraft(state.draft + it) })
+                    } else {
+                        val requester = remember { FocusRequester() }
+                        OutlinedTextField(
+                            value = state.draft,
+                            onValueChange = { state = state.changeDraft(it) },
+                            label = if (shortWindow) null else { { Text("M3U 地址") } },
+                            placeholder = { Text("https://example.com/list.m3u") },
+                            singleLine = true,
+                            isError = state.error != null,
+                            colors = standardTextFieldColors(),
+                            supportingText = state.error?.let { error -> { Text(error) } },
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done, keyboardType = KeyboardType.Uri),
+                            keyboardActions = KeyboardActions(onDone = { submit() }),
+                            modifier = Modifier.fillMaxWidth().focusRequester(requester)
+                        )
+                        LaunchedEffect(Unit) { requester.requestFocus() }
+                    }
+                }
+                Spacer(Modifier.height(if (shortWindow) 4.dp else 12.dp))
+                FormActions(
+                    primary = UiAction(if (state.adding) "添加" else "确定", icon = UiIcons.Check,
+                        accentColor = UiColors.Info, onClick = { submit() }),
+                    secondary = UiAction("取消", icon = UiIcons.X,
+                        accentColor = MaterialTheme.colorScheme.onSurfaceVariant, onClick = { back() }),
+                    destructive = if (useTvKeyboard) UiAction("退格", icon = UiIcons.ArrowLeft,
+                        accentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        onClick = { state = state.changeDraft(state.draft.dropLast(1)) }) else null,
+                    stackOnCompact = useTvKeyboard
+                )
+            }
+        }
+    }
+
+    if (state.confirmation != AddressConfirmation.NONE) {
+        val deleting = state.confirmation == AddressConfirmation.DELETE
+        fun dismiss() { state = state.copy(confirmation = AddressConfirmation.NONE) }
+        AlertDialog(
+            onDismissRequest = { dismiss() },
+            title = { Text(if (deleting) "删除频道源？" else "放弃未保存的修改？") },
+            text = { Text(if (deleting) state.urls.getOrNull(state.deleteIndex).orEmpty() else "修改尚未保存。") },
+            confirmButton = {
+                if (deleting) {
+                    DialogFooter(
+                        primary = UiAction("删除", icon = UiIcons.Trash, accentColor = UiColors.Delete,
+                            onClick = { state = state.confirmDelete() }),
+                        secondary = UiAction("取消", icon = UiIcons.X, accentColor = UiColors.Info,
+                            onClick = { dismiss() })
                     )
-                    // 打开即聚焦弹键盘
-                    LaunchedEffect(Unit) { focusRequester.requestFocus() }
+                } else {
+                    DialogFooter(
+                        primary = UiAction("继续编辑", icon = UiIcons.Pencil, accentColor = UiColors.Info,
+                            onClick = { dismiss() }),
+                        destructive = UiAction("放弃修改", icon = UiIcons.Trash, accentColor = UiColors.Delete,
+                            onClick = {
+                                if (state.confirmation == AddressConfirmation.LEAVE) onBack()
+                                else state = state.closeEditor()
+                            })
+                    )
                 }
             }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            FormActions(
-                primary = UiAction(
-                    label = if (isAdding) "添加" else "确定",
-                    icon = UiIcons.Check,
-                    accentColor = UiColors.Info,
-                    onClick = { submitDraft() }
-                ),
-                secondary = UiAction(
-                    label = "取消",
-                    icon = UiIcons.X,
-                    accentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                    onClick = { editingIndex = null }
-                ),
-                destructive = if (useTvKeyboard) {
-                    UiAction(
-                        label = "退格",
-                        icon = UiIcons.ArrowLeft,
-                        accentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        onClick = { draft = draft.dropLast(1) }
-                    )
-                } else null,
-                stackOnCompact = useTvKeyboard
-            )
-        }
+        )
     }
-}
-
-internal fun isSupportedM3uUrl(value: String): Boolean {
-    val normalized = value.trim()
-    val prefixLength = when {
-        normalized.startsWith("https://", ignoreCase = true) -> 8
-        normalized.startsWith("http://", ignoreCase = true) -> 7
-        else -> return false
-    }
-    return normalized.length > prefixLength && normalized.substring(prefixLength).isNotBlank()
 }

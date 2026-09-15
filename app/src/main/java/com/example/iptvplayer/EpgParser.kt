@@ -2,7 +2,14 @@ package com.example.iptvplayer
 
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.sync.withPermit
 import org.xmlpull.v1.XmlPullParser
 import org.xmlpull.v1.XmlPullParserFactory
 import java.io.StringReader
@@ -34,6 +41,14 @@ data class Programme(
     val channelId: String, // 对应 M3U 里频道的 tvg-id/tvg-name
     val start: Date,
     val end: Date,
+    val title: String
+)
+
+/** 去重用的节目身份键：去重比的是归一化后的频道标识，而非原始字符串。 */
+private data class ProgrammeKey(
+    val channelId: String,
+    val start: Long,
+    val end: Long,
     val title: String
 )
 
@@ -91,24 +106,19 @@ fun parseXmltv(text: String): List<Programme> {
     return programmes
 }
 
+// SimpleDateFormat 不是线程安全的，且构造开销大；EPG 解析可能在多个后台线程跑，
+// 用 ThreadLocal 让每个线程复用各自的实例，而不是每解析一条节目就新建一个。
+private val xmltvTimeFormat: ThreadLocal<SimpleDateFormat> = ThreadLocal.withInitial {
+    SimpleDateFormat("yyyyMMddHHmmss Z", Locale.US) // Z 匹配 "+0800" 这种时区写法
+}
+
 /** 解析 XMLTV 的时间格式："20260815090000 +0800" → Date */
 private fun parseXmltvTime(text: String): Date? {
     return try {
-        // Z 匹配 "+0800" 这种时区写法
-        SimpleDateFormat("yyyyMMddHHmmss Z", Locale.US).parse(text)
+        xmltvTimeFormat.get()?.parse(text)
     } catch (e: Exception) {
         null
     }
-}
-
-/**
- * 从节目列表里找出某个频道"此刻正在播"的节目。
- * 规则：当前时间在节目的开始~结束之间，且频道的任意 EPG 标识命中。
- * 频道可能有多个 tvgId（来自不同源），任一命中即可。
- * 找不到就返回 null（界面不显示）。
- */
-fun getCurrentProgramme(programmes: List<Programme>, tvgIds: List<String>, now: Date): Programme? {
-    return getProgrammeSchedule(programmes, tvgIds, now).current
 }
 
 /**
@@ -138,19 +148,42 @@ fun getProgrammeSchedule(
     return ProgrammeSchedule(current, next)
 }
 
+/**
+ * 在一个已经过滤好的单频道节目列表里找当前/下一档节目。
+ * 与 [getProgrammeSchedule] 的判定规则完全一致，只是省去了逐条节目的
+ * channelId 归一化比较——调用方保证列表里只有这一个频道的节目。
+ * 列表页每个频道行都会查一次节目单，这个快路径避免每次都归一化整列节目名。
+ */
+private fun findScheduleInChannel(
+    programmes: List<Programme>,
+    now: Date
+): ProgrammeSchedule {
+    var current: Programme? = null
+    var next: Programme? = null
+
+    for (programme in programmes) {
+        val isCurrent = !now.before(programme.start) && now.before(programme.end)
+        if (isCurrent && (current == null || programme.start.before(current.start))) {
+            current = programme
+        }
+        if (programme.start.after(now) && (next == null || programme.start.before(next.start))) {
+            next = programme
+        }
+    }
+    return ProgrammeSchedule(current, next)
+}
+
 internal fun normalizeEpgChannelId(value: String): String = value.trim().lowercase(Locale.ROOT)
 
 /**
  * 节目单缓存：MainActivity 下载解析后写进来，列表和播放页读。
  * 和 ChannelCache 一样的思路：避免重复下载。
  * 另外记录加载时间，返回列表时不会反复下载 8MB 的 EPG。
+ * 只保留"按频道分组"这一份节目列表：所有查询都走 schedule，
+ * 再单独存一份整表只会让大 EPG 的引用数组在内存里翻倍。
  */
 object EpgCache {
     private const val EPG_TTL_MS = 10 * 60 * 1000L
-
-    @Volatile
-    var programmes: List<Programme> = emptyList()
-        private set
 
     @Volatile
     private var programmesByChannel: Map<String, List<Programme>> = emptyMap()
@@ -161,14 +194,23 @@ object EpgCache {
     @Volatile
     private var sourceUrls: Set<String> = emptySet()
 
+    @Volatile
+    var configuredUrls: Set<String> = emptySet()
+        private set
+
+    @Synchronized
+    fun configureSources(urls: Set<String>) {
+        if (configuredUrls == urls) return
+        configuredUrls = urls
+        sourceUrls = emptySet()
+        programmesByChannel = emptyMap()
+        loadedAtMillis = 0L
+    }
+
     /** programmesByChannel 在后台线程构建好再整体传入，避免主线程做大的 groupBy。 */
     @Synchronized
-    fun update(
-        programmes: List<Programme>,
-        programmesByChannel: Map<String, List<Programme>>,
-        sourceUrls: Set<String>
-    ) {
-        this.programmes = programmes
+    fun update(programmesByChannel: Map<String, List<Programme>>, sourceUrls: Set<String>) {
+        if (sourceUrls != configuredUrls) return
         this.programmesByChannel = programmesByChannel
         this.sourceUrls = sourceUrls
         loadedAtMillis = System.currentTimeMillis()
@@ -186,7 +228,7 @@ object EpgCache {
         var next: Programme? = null
         for (tvgId in tvgIds) {
             val programmes = programmesByChannel[normalizeEpgChannelId(tvgId)].orEmpty()
-            val match = getProgrammeSchedule(programmes, listOf(tvgId), now)
+            val match = findScheduleInChannel(programmes, now)
             if (match.current != null &&
                 (current == null || match.current.start.before(current.start))
             ) {
@@ -201,9 +243,6 @@ object EpgCache {
 
     fun currentProgramme(tvgIds: List<String>, now: Date = Date()): Programme? =
         schedule(tvgIds, now).current
-
-    fun nextProgramme(tvgIds: List<String>, now: Date = Date()): Programme? =
-        schedule(tvgIds, now).next
 }
 
 /**
@@ -211,43 +250,53 @@ object EpgCache {
  * 这是"增强功能"：任何一步失败都静默跳过，不影响频道列表。
  *
  * 性能注意：EPG 源（如 fanmingming e.xml）可能高达数 MB、几十万条节目。
+ * - 多个 EPG 源互不依赖，并行下载解析，慢源不再拖长整体等待
  * - 下载在 IO 线程（downloadM3u 内部切 IO）
  * - 解析 + 过滤 + 按频道分组都是 CPU 密集，放在 Dispatchers.Default 上跑，
- *   绝不能占主线程，否则会阻塞界面/按键导致 ANR。
- * - 只保留"当前时刻附近"的节目（界面只需"现在播什么"），降低内存占用。
+ *   绝不能占主线程，否则会阻塞界面/按键导致 ANR
+ * - 只保留"当前时刻附近"的节目（界面只需"现在播什么"），降低内存占用
  */
-suspend fun loadEpg(m3uTexts: List<String>) {
-    val epgUrls = m3uTexts.flatMap(::extractEpgUrls).toSet()
-    if (epgUrls.isEmpty() || !EpgCache.needsRefresh(epgUrls)) return
+private val epgRefreshLock = Mutex()
+
+suspend fun refreshConfiguredEpg() = epgRefreshLock.withLock {
+    val epgUrls = EpgCache.configuredUrls
+    if (epgUrls.isEmpty() || !EpgCache.needsRefresh(epgUrls)) return@withLock
 
     val now = System.currentTimeMillis()
     val maxStart = now + 24 * 3600_000L
     val minEnd = now - 2 * 3600_000L
-    val collected = mutableListOf<Programme>()
-    var loadedSources = 0
 
-    for (epgUrl in epgUrls) {
-        try {
-            val text = downloadM3u(epgUrl)
-            collected += withContext(Dispatchers.Default) {
-                parseXmltv(text).filter { programme ->
-                    programme.start.time < maxStart && programme.end.time > minEnd
+    val perSource = coroutineScope {
+        val limit = Semaphore(2)
+        epgUrls.map { epgUrl ->
+            async {
+                try {
+                    limit.withPermit {
+                        val text = downloadM3u(epgUrl)
+                        withContext(Dispatchers.Default) {
+                            parseXmltv(text).filter { programme ->
+                                programme.start.time < maxStart && programme.end.time > minEnd
+                            }
+                        }
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    AppLog.log("EPG 加载失败：${e.message ?: e.javaClass.simpleName}")
+                    android.util.Log.w("IptvPlayer", "EPG 加载失败 $epgUrl", e)
+                    null
                 }
             }
-            loadedSources++
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            AppLog.log("EPG 加载失败：${e.message ?: e.javaClass.simpleName}")
-            android.util.Log.w("IptvPlayer", "EPG 加载失败 $epgUrl", e)
-        }
+        }.awaitAll()
     }
+    if (perSource.all { it == null }) return@withLock
+    val collected = perSource.filterNotNull()
 
-    if (loadedSources == 0) return
-    val (programmes, byChannel) = withContext(Dispatchers.Default) {
+    val (byChannel, programmeCount) = withContext(Dispatchers.Default) {
         val merged = collected
+            .flatten()
             .distinctBy { programme ->
-                listOf(
+                ProgrammeKey(
                     normalizeEpgChannelId(programme.channelId),
                     programme.start.time,
                     programme.end.time,
@@ -255,10 +304,13 @@ suspend fun loadEpg(m3uTexts: List<String>) {
                 )
             }
             .sortedBy { it.start }
-        merged to merged.groupBy { normalizeEpgChannelId(it.channelId) }
+        merged.groupBy { normalizeEpgChannelId(it.channelId) } to merged.size
     }
-    EpgCache.update(programmes, byChannel, epgUrls)
-    AppLog.log("EPG 加载成功：$loadedSources/${epgUrls.size} 个源，${programmes.size} 条节目")
+    EpgCache.update(byChannel, epgUrls)
+    AppLog.log(
+        "EPG 加载成功：${perSource.count { it != null }}/${epgUrls.size} 个源，" +
+            "$programmeCount 条节目"
+    )
 }
 
 /** 某个频道此刻正在播的节目名（没有节目单/没匹配到就返回 null） */

@@ -7,7 +7,6 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,6 +40,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -63,6 +63,14 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.repeatOnLifecycle
 
 class MainActivity : ComponentActivity() {
     private var reloadKey by mutableIntStateOf(0)
@@ -110,12 +118,16 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
     var isTesting by remember { mutableStateOf(false) }
     var testProgress by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     var testSummary by remember { mutableStateOf<String?>(null) }
-    var testKey by remember { mutableIntStateOf(0) }
+    val scope = rememberCoroutineScope()
+    var testJob by remember { mutableStateOf<Job?>(null) }
 
     LaunchedEffect(Unit) {
-        while (true) {
-            delay(60_000)
-            epgRevision++
+        (context as ComponentActivity).lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                refreshConfiguredEpg()
+                epgRevision++
+                delay(60_000)
+            }
         }
     }
 
@@ -132,41 +144,59 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
         val all = groupedChannels.values.flatten()
         if (all.isEmpty()) return
         autoPlayedThisLaunch = true
-        val target = recentChannels.firstNotNullOfOrNull { name -> all.firstOrNull { it.name == name } }
+        // 预建 "名字 → 频道" 映射，最近观看逐个匹配时不用每次都线性扫全表。
+        val byName = all.associateBy { it.name }
+        val target = recentChannels.firstNotNullOfOrNull { byName[it] }
             ?: all.firstOrNull()
         if (target != null) onChannelClick(target)
     }
 
-    LaunchedEffect(testKey) {
-        if (testKey == 0) return@LaunchedEffect
+    fun toggleTest() {
+        if (isTesting) {
+            testJob?.cancel()
+            return
+        }
         isTesting = true
         testSummary = null
         testProgress = null
-        try {
-            val tested = testAllChannels(context, groupedChannels.values.flatten()) { done, total ->
-                testProgress = done to total
+        val expectedRevision = ChannelCache.revision
+        val sources = getM3uUrls(context)
+        val candidates = groupedChannels.values.flatten()
+        testJob = scope.launch {
+            try {
+                val tested = testAllChannels(context, candidates) { done, total ->
+                    testProgress = done to total
+                }
+                if (sources != getM3uUrls(context) || !ChannelCache.replaceIfCurrent(expectedRevision, tested)) {
+                    testSummary = "频道已更新，旧测速结果已忽略"
+                    return@launch
+                }
+                recordLineResults(context, tested.flatMap { it.lineQuality.orEmpty() }.associate { it.url to it.usable })
+                groupedChannels = ChannelCache.channels.groupBy { it.group }
+                val available = tested.count { channel -> channel.urls.isNotEmpty() }
+                val resolutionDetected = tested.count { channel ->
+                    channel.lineQuality.orEmpty().any { it.usable && (it.measuredResolution ?: it.resolution) != null }
+                }
+                testSummary = "测速完成：$available 个可用，$resolutionDetected 个识别清晰度"
+                AppLog.log(
+                    "一键测速完成：$available 可用 / ${tested.size} 频道，" +
+                        "$resolutionDetected 个识别清晰度"
+                )
+            } catch (e: CancellationException) {
+                testSummary = "测速已取消"
+                throw e
+            } catch (e: Exception) {
+                testSummary = "测速失败：${e.message ?: "未知错误"}"
+                AppLog.log("一键测速失败")
+            } finally {
+                isTesting = false
+                testProgress = null
             }
-            groupedChannels = tested.groupBy { it.group }
-            ChannelCache.replaceChannels(tested)
-            val available = tested.count { channel -> channel.urls.isNotEmpty() }
-            val resolutionDetected = tested.count { channel ->
-                channel.lineQuality.orEmpty().any { it.usable && it.resolution != null }
-            }
-            testSummary = "测速完成：$available 个可用，$resolutionDetected 个识别清晰度"
-            AppLog.log(
-                "一键测速完成：$available 可用 / ${tested.size} 频道，" +
-                    "$resolutionDetected 个识别清晰度"
-            )
-        } catch (e: Exception) {
-            testSummary = "测速失败：${e.message ?: "未知错误"}"
-            AppLog.log("一键测速失败")
-        } finally {
-            isTesting = false
-            testProgress = null
         }
     }
 
     LaunchedEffect(reloadKey) {
+        testJob?.cancelAndJoin()
         errorMessage = null
         sourceMissing = false
         elderMode = isElderMode(context)
@@ -175,6 +205,9 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
 
         val sourceUrls = getM3uUrls(context)
         if (sourceUrls.isEmpty()) {
+            ChannelCache.update(emptyList(), emptyList())
+            EpgCache.configureSources(emptySet())
+            groupedChannels = emptyMap()
             sourceMissing = true
             isLoading = false
             return@LaunchedEffect
@@ -191,11 +224,14 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
         try {
             // 多个频道源互不依赖，并行下载可避免慢源依次拖长等待时间。
             val loadedSources = coroutineScope {
+                val limit = Semaphore(4)
                 sourceUrls.map { url ->
                     async {
                         try {
-                            val text = downloadM3u(url)
-                            LoadedSource(text, parseM3u(text))
+                            limit.withPermit {
+                                val text = downloadM3u(url)
+                                withContext(Dispatchers.Default) { LoadedSource(text, parseM3u(text)) }
+                            }
                         } catch (e: CancellationException) {
                             throw e
                         } catch (e: Exception) {
@@ -206,7 +242,8 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
                 }.awaitAll().filterNotNull()
             }
 
-            val merged = mergeChannels(loadedSources.flatMap { it.channels })
+            val merged = withContext(Dispatchers.Default) { mergeChannels(loadedSources.flatMap { it.channels }) }
+            if (sourceUrls != getM3uUrls(context)) return@LaunchedEffect
             if (merged.isEmpty()) {
                 val stale = ChannelCache.staleChannels(sourceUrls)
                 if (stale != null) {
@@ -219,26 +256,28 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
                 }
             } else {
                 ChannelCache.update(merged, sourceUrls)
-                groupedChannels = merged.groupBy { it.group }
+                groupedChannels = withContext(Dispatchers.Default) { merged.groupBy { it.group } }
                 AppLog.log("加载成功：${merged.size} 个频道（${loadedSources.size} 个源）")
 
-                val epgSources = loadedSources.map { it.text }.filter { extractEpgUrls(it).isNotEmpty() }
+                val epgSources = loadedSources.flatMap { extractEpgUrls(it.text) }.toSet()
+                EpgCache.configureSources(epgSources)
                 if (epgSources.isNotEmpty()) {
                     // EPG 是增强信息，不阻塞频道列表先显示。
                     launch {
-                        loadEpg(epgSources)
+                        refreshConfiguredEpg()
                         epgRevision++
                     }
                 }
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             android.util.Log.e("IptvPlayer", "加载频道列表失败", e)
             errorMessage = e.message ?: "未知错误"
         } finally {
             isLoading = false
-            // 下载成功或回退到旧缓存后，自动进入直播（首个加载周期内只触发一次）。
-            autoPlayIfReady()
         }
+        autoPlayIfReady()
     }
 
     Box(
@@ -271,7 +310,7 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
                     toggleFavorite(context, channel.name)
                     favorites = getFavorites(context)
                 },
-                onSpeedTest = { testKey++ },
+                onSpeedTest = { toggleTest() },
                 onRefresh = onReload,
                 onOpenSearch = { context.startActivity(Intent(context, SearchActivity::class.java)) },
                 onOpenSettings = { context.startActivity(Intent(context, SettingsActivity::class.java)) }
@@ -370,7 +409,8 @@ fun channelStatusText(channel: Channel): String? {
         best.score >= 70 -> "流畅"
         else -> "一般"
     }
-    return if (best?.resolution != null) "${best.resolution.label} · $networkStatus" else networkStatus
+    val resolution = best?.measuredResolution ?: best?.resolution
+    return if (resolution != null) "${resolution.label} · $networkStatus" else networkStatus
 }
 
 private data class ChannelGroup(val key: String, val name: String, val channels: List<Channel>)
@@ -545,9 +585,8 @@ private fun TopBarButtons(
         ToolbarAction(UiIcons.Refresh, "刷新", onRefresh, showLabel = !compact, accentColor = UiColors.Refresh)
         if (!elderMode) {
             ToolbarAction(
-                icon = UiIcons.Gauge,
-                label = testLabel(),
-                enabled = !isTesting,
+                icon = if (isTesting) UiIcons.X else UiIcons.Gauge,
+                label = if (isTesting) "取消测速" else testLabel(),
                 onClick = onSpeedTest,
                 showLabel = !compact,
                 accentColor = UiColors.Speed
@@ -596,10 +635,12 @@ private fun ChannelListContent(
             itemsIndexed(selectedGroup.channels, key = { _, channel -> channel.name }) { index, channel ->
                 // epgRevision 变化时重新读取当前节目（remember 以它为键触发重算）。
                 val nowPlaying = remember(epgRevision, channel) { currentProgrammeTitle(channel) }
+                // 状态只依赖频道自身：测速后是新的 Channel 实例，不必随 EPG 刷新重算排序。
+                val status = remember(channel) { channelStatusText(channel) }
                 ChannelRow(
                     channel = channel,
                     index = index + 1,
-                    status = channelStatusText(channel),
+                    status = status,
                     nowPlaying = nowPlaying,
                     isFavorite = channel.name in favorites,
                     onClick = { onChannelClick(channel) },
@@ -618,7 +659,6 @@ private fun GroupChip(name: String, count: Int, selected: Boolean, onClick: () -
         modifier = Modifier
             .height(40.dp)
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
             .shadow(
                 elevation = if (focused) 7.dp else 2.dp,
                 shape = MaterialTheme.shapes.large,
@@ -658,7 +698,6 @@ private fun GroupRow(name: String, count: Int, selected: Boolean, onClick: () ->
             .fillMaxWidth()
             .heightIn(min = 50.dp)
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
             .border(
                 if (focused) 2.dp else 1.dp,
                 if (focused) UiColors.Live else Color.White,
@@ -722,7 +761,6 @@ fun ChannelRow(
             .fillMaxWidth()
             .heightIn(min = 72.dp)
             .onFocusChanged { isFocused = it.isFocused }
-            .focusable()
             .border(
                 if (isFocused) 2.dp else 1.dp,
                 if (isFocused) UiColors.Live else MaterialTheme.colorScheme.outline,
@@ -786,7 +824,6 @@ fun ChannelRow(
             modifier = Modifier
                 .size(42.dp)
                 .onFocusChanged { favoriteFocused = it.isFocused }
-                .focusable()
                 .border(
                     2.dp,
                     if (favoriteFocused) MaterialTheme.colorScheme.primary else Color.Transparent,

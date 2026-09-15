@@ -3,7 +3,6 @@ package com.example.iptvplayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -102,7 +101,6 @@ fun KeyButton(
             .width(width)
             .height(height)
             .onFocusChanged { focused = it.isFocused }
-            .focusable()
             .graphicsLayer {
                 scaleX = if (focused) 1.05f else 1f
                 scaleY = if (focused) 1.05f else 1f

@@ -9,6 +9,17 @@ import org.junit.Test
 class LineTesterTest {
 
     @Test
+    fun retainsSmoothLowResolutionBackupAfterThree4kLines() {
+        val urls = listOf("4k-a", "4k-b", "4k-c", "1080-backup")
+        val channel = Channel("test", "test", urls)
+        val results = urls.mapIndexed { i, url ->
+            LineQuality(url, true, 10, if (i == 3) 95 else 30,
+                if (i == 3) StreamResolution(1920, 1080) else StreamResolution(3840, 2160))
+        }
+        assertEquals(urls, applyLineTestResults(channel, results) { 0 }.urls)
+    }
+
+    @Test
     fun networkQuality_usesLatencyForSmallManifest() {
         val quality = calculateNetworkQuality(
             latencyMs = 120,

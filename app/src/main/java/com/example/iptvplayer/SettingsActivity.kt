@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.border
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -183,7 +182,6 @@ private fun FontSizeSelector(selected: Int, onSelected: (Int) -> Unit) {
                     .weight(1f)
                     .height(44.dp)
                     .onFocusChanged { focused = it.isFocused }
-                    .focusable()
                     .border(
                         if (focused) 2.dp else 1.dp,
                         if (focused) UiColors.Settings else Color.Transparent,

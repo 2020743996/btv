@@ -3,9 +3,37 @@ package com.example.iptvplayer
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
 import org.junit.Test
 
 class M3uParserTest {
+
+    @Test
+    fun cacheRejectsTestResultAfterRefreshOrSourceChange() {
+        val old = listOf(Channel("old", "test", listOf("old-url")))
+        val fresh = listOf(Channel("new", "test", listOf("new-url")))
+        ChannelCache.update(old, listOf("source-a"))
+        val revision = ChannelCache.revision
+        ChannelCache.invalidate()
+        assertFalse(ChannelCache.replaceIfCurrent(revision, old))
+        ChannelCache.update(fresh, listOf("source-b"))
+        assertFalse(ChannelCache.replaceIfCurrent(revision, old))
+        assertEquals(fresh, ChannelCache.channels)
+        assertTrue(ChannelCache.replaceIfCurrent(ChannelCache.revision, fresh))
+    }
+
+    @Test
+    fun measured1080Corrects4kHintAndSurvivesPendingTest() {
+        val hint = LineQuality("url", true, 30, 90, StreamResolution(3840, 2160))
+        val channel = Channel("test", "test", listOf("url"), lineQuality = listOf(hint))
+        ChannelCache.update(listOf(channel), listOf("source"))
+        val revision = ChannelCache.revision
+        ChannelCache.updateLineResolution("test", "url", StreamResolution(1920, 1080))
+        assertTrue(ChannelCache.replaceIfCurrent(revision, listOf(channel)))
+        val quality = ChannelCache.channels.single().lineQuality!!.single()
+        assertEquals(StreamResolution(1920, 1080), quality.measuredResolution)
+        assertEquals("1080p · 流畅", channelStatusText(ChannelCache.channels.single()))
+    }
 
     @Test
     fun parseM3u_readsChannelMetadataAndUrl() {
@@ -143,7 +171,7 @@ class M3uParserTest {
         ChannelCache.updateLineResolution("测试频道", backup, StreamResolution(3840, 2160))
         assertEquals(
             StreamResolution(3840, 2160),
-            ChannelCache.channels.single().lineQuality?.first { it.url == backup }?.resolution
+            ChannelCache.channels.single().lineQuality?.first { it.url == backup }?.measuredResolution
         )
 
         ChannelCache.restoreAllLines()

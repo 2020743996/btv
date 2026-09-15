@@ -19,6 +19,7 @@ private val speedTestClient: OkHttpClient by lazy {
     sharedHttpClient.newBuilder()
         .connectTimeout(4, TimeUnit.SECONDS)
         .readTimeout(8, TimeUnit.SECONDS)
+        .callTimeout(12, TimeUnit.SECONDS)
         .build()
 }
 
@@ -44,7 +45,8 @@ data class LineQuality(
     val latencyMs: Long?,     // 延迟毫秒数（不可用时为 null）
     val score: Int,           // 网络分 0-100：>=70 流畅，30-69 一般，<30 慢/不可用
     val resolution: StreamResolution? = null,
-    val throughputKbps: Int? = null
+    val throughputKbps: Int? = null,
+    val measuredResolution: StreamResolution? = null
 )
 
 /**
@@ -52,7 +54,7 @@ data class LineQuality(
  *
  * 整理规则（"一键优化"的核心逻辑）：
  * 1. 可用线路优先按分辨率从高到低排序，同分辨率再按网络分排序
- * 2. 只保留前 3 条可用线路（1 条主力 + 2 条备用），避免线路过多
+ * 2. 保留全部可用线路，低清晰度源仍可作为播放回退
  * 3. 本次失败但历史失败 <2 次的：疑似失效，排到最后但还保留
  * 4. 连续失败达到 2 次的：判定失效，从列表剔除（自动隐藏）
  */
@@ -71,14 +73,24 @@ suspend fun testChannel(
             }
         }.awaitAll()
     }
-    recordLineResults(context, results.associate { it.url to it.usable })
+    return applyLineTestResults(channel, results) { getFailCount(context, it) }
+}
 
-    val usable = sortUsableLines(results)
-    val suspected = results.filter { !it.usable && !isLineDead(context, it.url) }
-    val dead = results.filter { !it.usable && isLineDead(context, it.url) }
+internal fun applyLineTestResults(
+    channel: Channel,
+    results: List<LineQuality>,
+    failureCount: (String) -> Int
+): Channel {
+    val known = channel.lineQuality.orEmpty().associateBy { it.url }
+    val measured = results.map { it.copy(measuredResolution = known[it.url]?.measuredResolution) }
+    val usable = sortUsableLines(measured)
+    // 一次遍历把不可用线路分成"失效"和"疑似失效"两组（各保持原有顺序），
+    // 而不是对每条线路分别再跑一遍 isLineDead（那会重复读失败计数）。
+    val (dead, suspected) = measured.filter { !it.usable }
+        .partition { failureCount(it.url) + 1 >= 2 }
 
-    // 保留 3 条好线路 + 疑似失效的（供手动尝试），失效的直接剔除
-    val kept = (usable.take(3) + suspected).map { it.url }
+    // 结果成功提交到当前缓存版本后，调用方再统一写失败计数。
+    val kept = (usable + suspected).map { it.url }
 
     return channel.copy(
         urls = kept,
@@ -124,7 +136,7 @@ suspend fun testLine(
             .url(url)
             .header("User-Agent", APP_USER_AGENT)
             .build()
-        speedTestClient.newCall(request).execute().use { response ->
+        speedTestClient.newCall(request).readCancellable { response ->
             val latency = System.currentTimeMillis() - startTime
             // 2xx / 3xx 都算可用（重定向也是正常的）
             if (response.isSuccessful) {

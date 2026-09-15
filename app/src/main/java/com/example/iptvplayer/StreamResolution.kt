@@ -68,7 +68,7 @@ private fun resolutionFromHeight(height: Int): StreamResolution {
 
 internal fun sortUsableLines(results: List<LineQuality>): List<LineQuality> =
     results.filter { it.usable }.sortedWith(
-        compareByDescending<LineQuality> { it.resolution?.pixelCount ?: 0L }
+        compareByDescending<LineQuality> { (it.measuredResolution ?: it.resolution)?.pixelCount ?: 0L }
             .thenByDescending { it.score }
             .thenBy { it.latencyMs ?: Long.MAX_VALUE }
     )

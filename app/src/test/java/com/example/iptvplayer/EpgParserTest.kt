@@ -8,6 +8,20 @@ import java.util.Date
 class EpgParserTest {
 
     @Test
+    fun sourceChangeClearsOldScheduleAndRejectsOldDownload() {
+        val programme = Programme("news", Date(0), Date(3_000), "old")
+        val first = setOf("https://one.example/epg")
+        val second = setOf("https://two.example/epg")
+        EpgCache.configureSources(first)
+        EpgCache.update(mapOf("news" to listOf(programme)), first)
+        assertEquals(programme, EpgCache.schedule(listOf("news"), Date(1_000)).current)
+        EpgCache.configureSources(second)
+        EpgCache.update(mapOf("news" to listOf(programme)), first)
+        assertNull(EpgCache.schedule(listOf("news"), Date(1_000)).current)
+        EpgCache.configureSources(emptySet())
+    }
+
+    @Test
     fun getProgrammeSchedule_returnsCurrentAndEarliestNextProgramme() {
         val now = Date(1_000_000)
         val current = Programme("news", Date(900_000), Date(1_100_000), "午间新闻")

@@ -51,6 +51,8 @@ fun saveM3uUrls(context: Context, urls: List<String>) {
         // 继续写旧键，方便从旧版升级/回退时仍能读到地址。
         .putStringSet(KEY_M3U_URLS, normalized.toSet())
         .apply() // apply：异步写盘，不卡界面
+    ChannelCache.invalidate()
+    EpgCache.configureSources(emptySet())
 }
 
 fun normalizeOrderedStringList(values: List<String>): List<String> =

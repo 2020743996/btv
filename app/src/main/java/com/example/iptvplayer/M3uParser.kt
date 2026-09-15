@@ -61,7 +61,8 @@ fun parseM3u(text: String): List<Channel> {
     var pendingTvgId: String? = null
     var pendingLogoUrl: String? = null
 
-    for (rawLine in text.lines()) {
+    // lineSequence 惰性逐行遍历：大 M3U（几十万行）不必先把所有行收集成一个中间列表。
+    for (rawLine in text.lineSequence()) {
         val line = rawLine.trim() // 去掉行首行尾的空格
 
         when {
@@ -105,7 +106,7 @@ fun parseM3u(text: String): List<Channel> {
                         name = channelName,
                         group = pendingGroup ?: "未分组",
                         urls = listOf(line), // 单个源解析出来，每个频道只有这一条线路
-                        tvgIds = if (pendingTvgId != null) listOf(pendingTvgId!!) else emptyList(),
+                        tvgIds = listOfNotNull(pendingTvgId),
                         logoUrl = pendingLogoUrl,
                         urlQualityHints = mapOf(line to qualityHint)
                     )
@@ -128,7 +129,8 @@ fun parseM3u(text: String): List<Channel> {
  * 返回 null 表示这个源没有节目单。
  */
 fun extractEpgUrls(m3uText: String): List<String> {
-    val firstLine = m3uText.lines().firstOrNull() ?: return emptyList()
+    // 只需要第一行，用惰性行序列避免把整个大 M3U 切成一个列表。
+    val firstLine = m3uText.lineSequence().firstOrNull() ?: return emptyList()
     return EPG_URL_ATTRIBUTE.findAll(firstLine)
         .flatMap { match -> match.groupValues[1].split(',', ';').asSequence() }
         .map { it.trim() }
@@ -179,9 +181,10 @@ fun mergeChannels(allChannels: List<Channel>): List<Channel> {
             merged[key] = channel
         } else {
             // 见过：把新线路追加到已有线路后面（去重，顺序是"先来的在前"），
-            // EPG 标识也合并去重（不同源给同一频道的标识可能不同）
-            val newUrls = existing.urls + channel.urls.filter { it !in existing.urls }
-            val newTvgIds = existing.tvgIds + channel.tvgIds.filter { it !in existing.tvgIds }
+            // EPG 标识也合并去重（不同源给同一频道的标识可能不同）。
+            // distinct() 保持首次出现的顺序，等效于"只追加没见过的"，但只需一趟哈希。
+            val newUrls = (existing.urls + channel.urls).distinct()
+            val newTvgIds = (existing.tvgIds + channel.tvgIds).distinct()
             val newQualityHints = channel.urlQualityHints + existing.urlQualityHints
             merged[key] = existing.copy(
                 urls = newUrls,
@@ -216,8 +219,13 @@ object ChannelCache {
     @Volatile
     private var loadedAtMillis: Long = 0L
 
+    @Volatile
+    var revision: Long = 0L
+        private set
+
     @Synchronized
     fun update(channels: List<Channel>, sources: List<String>) {
+        revision++
         this.channels = channels
         sourceUrls = sources.toSet()
         loadedAtMillis = System.currentTimeMillis()
@@ -241,9 +249,25 @@ object ChannelCache {
         this.channels = channels
     }
 
+    @Synchronized
+    fun replaceIfCurrent(expectedRevision: Long, channels: List<Channel>): Boolean {
+        if (revision != expectedRevision) return false
+        // 保留测速期间由播放器写入的实测分辨率。
+        val measurements = this.channels.flatMap { it.lineQuality.orEmpty() }
+            .mapNotNull { quality -> quality.measuredResolution?.let { quality.url to it } }.toMap()
+        this.channels = channels.map { channel ->
+            val qualities = channel.lineQuality?.map { it.copy(measuredResolution = measurements[it.url] ?: it.measuredResolution) }
+            val ranked = sortUsableLines(qualities.orEmpty()).map { it.url }.filter { it in channel.urls }
+            channel.copy(lineQuality = qualities, urls = ranked + channel.urls.filter { it !in ranked })
+        }
+        revision++
+        return true
+    }
+
     /** 失效线复测成功后立即放回对应频道，不必等待用户强制刷新源。 */
     @Synchronized
     fun restoreLine(url: String, quality: LineQuality? = null) {
+        revision++
         channels = channels.map { channel ->
             if (url !in channel.allUrls) return@map channel
             val restoredUrls = (channel.urls + url).distinct()
@@ -261,6 +285,7 @@ object ChannelCache {
     /** 清空失效记录后恢复每个频道的完整原始线路，并清除过期测速状态。 */
     @Synchronized
     fun restoreAllLines() {
+        revision++
         channels = channels.map { channel ->
             channel.copy(urls = channel.allUrls.distinct(), lineQuality = null)
         }
@@ -272,11 +297,10 @@ object ChannelCache {
         channels = channels.map { channel ->
             if (channel.name != channelName || url !in channel.allUrls) return@map channel
             val existing = channel.lineQuality.orEmpty().firstOrNull { it.url == url }
-            val bestResolution = listOfNotNull(existing?.resolution, resolution)
-                .maxByOrNull { it.pixelCount }
             val updated = (channel.lineQuality.orEmpty().filterNot { it.url == url } +
-                (existing?.copy(usable = true, resolution = bestResolution)
-                    ?: LineQuality(url, usable = true, latencyMs = null, score = 70, resolution = bestResolution)))
+                (existing?.copy(usable = true, measuredResolution = resolution)
+                    ?: LineQuality(url, usable = true, latencyMs = null, score = 70,
+                        resolution = resolution, measuredResolution = resolution)))
             val rankedUrls = sortUsableLines(updated).map { it.url }
             channel.copy(
                 urls = (rankedUrls.filter { it in channel.urls } +
@@ -286,7 +310,9 @@ object ChannelCache {
         }
     }
 
+    @Synchronized
     fun invalidate() {
+        revision++
         loadedAtMillis = 0L
     }
 }

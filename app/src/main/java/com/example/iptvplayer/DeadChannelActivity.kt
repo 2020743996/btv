@@ -145,6 +145,7 @@ fun DeadChannelScreen(onBack: () -> Unit) {
                     icon = UiIcons.Trash,
                     accentColor = UiColors.Delete,
                     role = ActionRole.DESTRUCTIVE,
+                    enabled = !checking,
                     onClick = {
                         clearFailRecords(context)
                         ChannelCache.restoreAllLines()

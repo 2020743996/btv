@@ -83,13 +83,20 @@ fun normalizeQuery(raw: String): String =
     QUERY_SEPARATORS.replace(raw.lowercase(), "").trim()
 
 /** 查询是否命中；不命中返回 null。 */
-fun matchTier(query: String, keys: ChannelSearchKeys): MatchTier? {
-    val q = normalizeQuery(query)
-    if (q.isEmpty()) return null
+fun matchTier(query: String, keys: ChannelSearchKeys): MatchTier? =
+    matchNormalizedTier(normalizeQuery(query), keys)
+
+/**
+ * 与 [matchTier] 相同的匹配规则，但输入必须是已归一化的查询词。
+ * 搜索页对每次按键只归一化一次，然后逐频道复用——
+ * 若每个频道都调 [matchTier]，会各自多做一次正则替换。
+ */
+internal fun matchNormalizedTier(query: String, keys: ChannelSearchKeys): MatchTier? {
+    if (query.isEmpty()) return null
     return when {
-        keys.normalized.startsWith(q) -> MatchTier.PREFIX
-        keys.normalized.contains(q) -> MatchTier.CONTAINS
-        keys.pinyinFull.contains(q) || keys.pinyinInitials.contains(q) -> MatchTier.PINYIN
+        keys.normalized.startsWith(query) -> MatchTier.PREFIX
+        keys.normalized.contains(query) -> MatchTier.CONTAINS
+        keys.pinyinFull.contains(query) || keys.pinyinInitials.contains(query) -> MatchTier.PINYIN
         else -> null
     }
 }

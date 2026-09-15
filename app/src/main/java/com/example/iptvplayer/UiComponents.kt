@@ -7,7 +7,6 @@ import android.graphics.drawable.Drawable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.focusable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -22,6 +21,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -42,6 +42,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
+
+@Composable
+fun standardTextFieldColors() = OutlinedTextFieldDefaults.colors(
+    focusedBorderColor = UiColors.Info,
+    focusedLabelColor = UiColors.Info,
+    focusedLeadingIconColor = UiColors.Info,
+    cursorColor = UiColors.Info
+)
 
 /** M3U 台标。加载成功后隐藏缩写占位，避免透明台标透出底层文字。 */
 @Composable
@@ -186,7 +194,6 @@ fun ToolbarAction(
         modifier = modifier
             .height(44.dp)
             .onFocusChanged { focused = it.isFocused }
-            .focusable(enabled)
             .shadow(
                 elevation = if (focused) 8.dp else 3.dp,
                 shape = MaterialTheme.shapes.large,
