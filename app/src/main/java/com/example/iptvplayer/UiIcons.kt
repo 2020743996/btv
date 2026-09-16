@@ -44,6 +44,8 @@ object UiIcons {
     )
     val Play = lineIcon("Play", "M6 3l14 9-14 9z")
     val ArrowLeft = lineIcon("ArrowLeft", "M19 12H5", "M12 19l-7-7 7-7")
+    val ChevronLeft = lineIcon("ChevronLeft", "M15 18l-6-6 6-6")
+    val ChevronRight = lineIcon("ChevronRight", "M9 18l6-6-6-6")
     val Plus = lineIcon("Plus", "M12 5v14", "M5 12h14")
     val Trash = lineIcon(
         "Trash",
@@ -64,15 +66,15 @@ object UiIcons {
 }
 
 object UiColors {
-    val Accent = Color(0xFF3D6FA8)
-    val Live = Color(0xFFF05A4F)
+    val Accent = Color(0xFF0062CC)
+    val Live = Color(0xFFE04444)
     val Search = Accent
     val Refresh = Accent
     val Speed = Accent
     val Settings = Accent
     val Favorite = Live
     val Edit = Accent
-    val Delete = Color(0xFFD94B55)
+    val Delete = Color(0xFFC93434)
     val Info = Accent
 }
 

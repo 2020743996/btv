@@ -3,6 +3,9 @@ package com.example.iptvplayer
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,12 +27,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -42,7 +43,7 @@ internal enum class ActionVisualState { DISABLED, HIGHLIGHTED, FOCUSED, DEFAULT 
 data class UiAction(
     val label: String,
     val icon: ImageVector? = null,
-    val accentColor: Color = UiColors.Live,
+    val accentColor: Color = UiColors.Info,
     val enabled: Boolean = true,
     val role: ActionRole = ActionRole.SECONDARY,
     val onClick: () -> Unit
@@ -73,17 +74,14 @@ fun ActionButton(
     highlighted: Boolean = false,
     enabled: Boolean = true,
     icon: ImageVector? = null,
-    accentColor: Color = UiColors.Live,
+    accentColor: Color = UiColors.Info,
     onClick: () -> Unit
 ) {
     var focused by remember { mutableStateOf(false) }
+    val interaction = remember { MutableInteractionSource() }
+    val pressed by interaction.collectIsPressedAsState()
+    val opacity by animateFloatAsState(if (pressed) 0.72f else 1f, label = "buttonPress")
     val visualState = actionVisualState(enabled, highlighted, focused)
-    val backgroundColor: Brush = when (visualState) {
-        ActionVisualState.DISABLED -> SolidColor(MaterialTheme.colorScheme.surfaceVariant)
-        ActionVisualState.HIGHLIGHTED -> SolidColor(accentColor)
-        ActionVisualState.FOCUSED -> SolidColor(accentColor.copy(alpha = 0.14f))
-        ActionVisualState.DEFAULT -> SolidColor(Color.White.copy(alpha = 0.84f))
-    }
     val contentColor = when (visualState) {
         ActionVisualState.DISABLED -> MaterialTheme.colorScheme.onSurfaceVariant
         ActionVisualState.HIGHLIGHTED -> Color.White
@@ -99,32 +97,14 @@ fun ActionButton(
         modifier = modifier
             .height(48.dp)
             .onFocusChanged { focused = it.isFocused }
-            .graphicsLayer {
-                scaleX = if (focused) 1.03f else 1f
-                scaleY = if (focused) 1.03f else 1f
-            }
-            .shadow(
-                elevation = when (visualState) {
-                    ActionVisualState.DISABLED -> 0.dp
-                    ActionVisualState.FOCUSED -> 8.dp
-                    else -> 3.dp
-                },
-                shape = MaterialTheme.shapes.large,
-                ambientColor = accentColor.copy(alpha = 0.16f),
-                spotColor = accentColor.copy(alpha = 0.14f)
-            )
-            .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = when (visualState) {
-                    ActionVisualState.DISABLED -> MaterialTheme.colorScheme.outline
-                    ActionVisualState.FOCUSED -> accentColor
-                    else -> Color.White
-                },
-                shape = MaterialTheme.shapes.large
-            )
-            .clickable(enabled = enabled, onClick = onClick)
-            .background(backgroundColor, MaterialTheme.shapes.large)
-            .padding(horizontal = 28.dp),
+            .alpha(opacity)
+            .then(if (enabled && !highlighted) Modifier.glassSurface(focused = focused)
+                else Modifier.clip(AppleUi.Control)
+                    .background(if (enabled) accentColor else MaterialTheme.colorScheme.surfaceVariant)
+                    .border(if (focused) 3.dp else 0.dp,
+                        if (focused) MaterialTheme.colorScheme.onSurface else Color.Transparent, AppleUi.Control))
+            .clickable(interactionSource = interaction, indication = null, enabled = enabled, onClick = onClick)
+            .padding(horizontal = 20.dp),
         contentAlignment = Alignment.Center
     ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -263,15 +243,16 @@ private fun CompactIconAction(
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
-            .size(40.dp)
+            .size(44.dp)
             .onFocusChanged { focused = it.isFocused }
+            .clip(AppleUi.Control)
             .border(
                 if (focused) 2.dp else 1.dp,
-                if (focused) accentColor else accentColor.copy(alpha = 0.16f),
-                MaterialTheme.shapes.small
+                if (focused) accentColor else Color.Transparent,
+                AppleUi.Control
             )
             .clickable(onClick = onClick)
-            .background(accentColor.copy(alpha = if (focused) 0.14f else 0.07f), MaterialTheme.shapes.small),
+            .background(accentColor.copy(alpha = if (focused) 0.1f else 0f), AppleUi.Control),
         contentAlignment = Alignment.Center
     ) {
         Icon(icon, contentDescription = label, tint = accentColor, modifier = Modifier.size(20.dp))

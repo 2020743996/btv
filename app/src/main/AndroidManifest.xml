@@ -42,6 +42,7 @@
         <!-- PlayerActivity：播放页面（沉浸式全屏，配置变化不重建避免打断播放） -->
         <activity
             android:name=".PlayerActivity"
+            android:theme="@style/Theme.IptvPlayer.Playback"
             android:exported="false"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|density" />
 

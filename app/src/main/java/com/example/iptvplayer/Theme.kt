@@ -2,7 +2,6 @@ package com.example.iptvplayer
 
 import android.content.Context
 import android.content.pm.PackageManager
-import androidx.activity.ComponentActivity
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.systemBars
@@ -27,7 +26,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.core.view.WindowCompat
 
 /**
  * 系统栏安全 padding：仅手机/平板（非 TV）加状态栏+导航栏 inset 的 padding，
@@ -76,10 +74,10 @@ fun hasSystemIme(context: Context): Boolean {
 }
 
 /** 品牌强调色，用于标题、高亮按钮和选中态。 */
-val BrandGradient: Brush = SolidColor(UiColors.Live)
+val BrandGradient: Brush = SolidColor(UiColors.Info)
 
 /** 柔和强调底色，用于小面积选中态和状态提示。 */
-val SoftGradient: Brush = SolidColor(Color(0xFFFFF4F2))
+val SoftGradient: Brush = SolidColor(Color(0xFFF2F6FC))
 
 /**
  * 白色主调 + 功能色配色：
@@ -87,28 +85,28 @@ val SoftGradient: Brush = SolidColor(Color(0xFFFFF4F2))
  * - 单一蓝色承载普通操作，珊瑚红只用于直播与危险状态
  */
 private val IptvColorScheme = lightColorScheme(
-    primary = UiColors.Live,
+    primary = UiColors.Info,
     onPrimary = Color.White,
-    primaryContainer = Color(0xFFFFE1DD),
-    onPrimaryContainer = Color(0xFF5B1712),
+    primaryContainer = Color(0xFFE8F1FF),
+    onPrimaryContainer = Color(0xFF00366F),
     secondary = UiColors.Accent,
     onSecondary = Color.White,
-    tertiary = Color(0xFF7A6A52),
+    tertiary = Color(0xFF8A6400),
     onTertiary = Color.White,
     background = Color.White,
-    onBackground = Color(0xFF1D211F),
+    onBackground = Color(0xFF1C1C1E),
     surface = Color.White,
-    onSurface = Color(0xFF1D211F),
-    surfaceVariant = Color(0xFFF5F6F7),
-    onSurfaceVariant = Color(0xFF66707A),
-    outline = Color(0xFFE1E5E8),
+    onSurface = Color(0xFF1C1C1E),
+    surfaceVariant = Color(0xFFF2F2F7),
+    onSurfaceVariant = Color(0xFF63636B),
+    outline = Color(0xFFE5E5EA),
     error = Color(0xFFB3261E),
     onError = Color.White
 )
 
 private val IptvTypography = Typography(
     headlineLarge = TextStyle(fontSize = 30.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.SansSerif),
-    headlineMedium = TextStyle(fontSize = 24.sp, fontWeight = FontWeight.SemiBold, fontFamily = FontFamily.SansSerif),
+    headlineMedium = TextStyle(fontSize = 22.sp, fontWeight = FontWeight.Bold, fontFamily = FontFamily.SansSerif),
     titleLarge = TextStyle(fontSize = 18.sp, fontWeight = FontWeight.Medium, fontFamily = FontFamily.SansSerif),
     bodyLarge = TextStyle(fontSize = 16.sp),
     bodyMedium = TextStyle(fontSize = 14.sp),

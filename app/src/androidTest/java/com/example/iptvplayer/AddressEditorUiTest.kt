@@ -129,6 +129,9 @@ class AddressEditorUiTest {
         compose.onNode(hasSetTextAction()).assertTextContains("https://example.com/list.m3u")
         compose.onNodeWithText("取消").performClick()
         compose.onNodeWithText("放弃修改").performClick()
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNodeWithText("暂无频道源").assertIsDisplayed() }.isSuccess
+        }
         compose.onNodeWithText("暂无频道源").assertIsDisplayed()
     }
 

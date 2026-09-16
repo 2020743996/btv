@@ -54,7 +54,13 @@ fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onB
 
     fun back() {
         if (!state.editing && !state.dirty) onBack()
-        else state = state.requestBack()
+        else {
+            state = state.requestBack()
+            if (!state.editing) {
+                focus.clearFocus()
+                keyboard?.hide()
+            }
+        }
     }
     fun submit() {
         state = state.submit()
@@ -92,7 +98,7 @@ fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onB
                     itemsIndexed(state.urls) { index, url ->
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable { state = state.edit(index) }
-                                .padding(start = 12.dp, end = 4.dp, top = 8.dp, bottom = 8.dp),
+                                .padding(start = 4.dp, end = 0.dp, top = 12.dp, bottom = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(url, modifier = Modifier.weight(1f), fontSize = 15.sp,
@@ -103,6 +109,7 @@ fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onB
                                 onDelete = { state = state.copy(confirmation = AddressConfirmation.DELETE, deleteIndex = index) }
                             )
                         }
+                        ListSeparator()
                     }
                 }
                 Spacer(Modifier.height(12.dp))
@@ -132,6 +139,7 @@ fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onB
                             label = if (shortWindow) null else { { Text("M3U 地址") } },
                             placeholder = { Text("https://example.com/list.m3u") },
                             singleLine = true,
+                            shape = AppleUi.Field,
                             isError = state.error != null,
                             colors = standardTextFieldColors(),
                             supportingText = state.error?.let { error -> { Text(error) } },
@@ -179,7 +187,11 @@ fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onB
                         destructive = UiAction("放弃修改", icon = UiIcons.Trash, accentColor = UiColors.Delete,
                             onClick = {
                                 if (state.confirmation == AddressConfirmation.LEAVE) onBack()
-                                else state = state.closeEditor()
+                                else {
+                                    state = state.closeEditor()
+                                    focus.clearFocus()
+                                    keyboard?.hide()
+                                }
                             })
                     )
                 }

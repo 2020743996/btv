@@ -1,7 +1,5 @@
 package com.example.iptvplayer
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,8 +17,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
@@ -101,21 +97,8 @@ fun KeyButton(
             .width(width)
             .height(height)
             .onFocusChanged { focused = it.isFocused }
-            .graphicsLayer {
-                scaleX = if (focused) 1.05f else 1f
-                scaleY = if (focused) 1.05f else 1f
-            }
-            .border(
-                width = 2.dp,
-                color = if (focused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                shape = MaterialTheme.shapes.small
-            )
-            .clickable(onClick = onPress)
-            .background(
-                if (focused) MaterialTheme.colorScheme.surfaceVariant
-                else MaterialTheme.colorScheme.surface,
-                MaterialTheme.shapes.small
-            ),
+            .glassSurface(shape = MaterialTheme.shapes.medium, focused = focused)
+            .clickable(onClick = onPress),
         contentAlignment = Alignment.Center
     ) {
         Text(

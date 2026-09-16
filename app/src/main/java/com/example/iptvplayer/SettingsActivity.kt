@@ -30,6 +30,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -83,7 +84,7 @@ fun SettingsScreen(onOpenAdmin: () -> Unit, onBack: () -> Unit) {
                     vertical = if (compact) 16.dp else 24.dp
                 )
         ) {
-            PageHeader(title = "设置", subtitle = "调整观看体验与频道管理", onBack = onBack)
+            PageHeader(title = "设置", onBack = onBack)
             Spacer(modifier = Modifier.height(18.dp))
 
             Column(
@@ -93,48 +94,38 @@ fun SettingsScreen(onOpenAdmin: () -> Unit, onBack: () -> Unit) {
                     .verticalScroll(rememberScrollState())
             ) {
                 // ===== 老人模式 =====
+                SectionLabel("观看")
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text("老人模式", color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp)
-                        Text(
-                            "保留电视、收藏和必要设置",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            fontSize = 13.sp
-                        )
                     }
                     Switch(
                         checked = elderMode,
                         onCheckedChange = { elderMode = it },
                         colors = SwitchDefaults.colors(
-                            checkedTrackColor = UiColors.Settings,
-                            checkedThumbColor = Color.White
+                            checkedTrackColor = Color(0xFF248A3D),
+                            checkedThumbColor = Color.White,
+                            uncheckedTrackColor = Color(0xFFE2E3E8),
+                            uncheckedThumbColor = Color.White,
+                            uncheckedBorderColor = Color.Transparent
                         )
                     )
                 }
 
                 Spacer(modifier = Modifier.height(14.dp))
+                ListSeparator()
 
                 // ===== 字体大小：标准 / 大 / 特大 =====
-                Text("字体大小", color = MaterialTheme.colorScheme.onSurface, fontSize = 15.sp)
+                SectionLabel("字体大小")
                 Spacer(modifier = Modifier.height(6.dp))
                 FontSizeSelector(selected = fontSize, onSelected = { fontSize = it })
 
                 // ===== 管理员模式入口（老人模式隐藏，防止误操作） =====
                 if (!elderMode) {
                     Spacer(modifier = Modifier.height(24.dp))
-                    Text(
-                        "管理员模式：源地址、日志、失效频道管理",
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = 13.sp
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    ActionButton(
-                        "进入频道管理",
-                        modifier = Modifier.fillMaxWidth(),
-                        icon = UiIcons.Sliders,
-                        accentColor = UiColors.Settings,
-                        onClick = onOpenAdmin
-                    )
+                    SectionLabel("管理")
+                    NavigationRow("频道管理", UiIcons.Sliders, onOpenAdmin)
+                    ListSeparator(inset = 48.dp)
                 }
 
                 Spacer(modifier = Modifier.height(20.dp))
@@ -170,8 +161,8 @@ private fun FontSizeSelector(selected: Int, onSelected: (Int) -> Unit) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.small)
-            .padding(2.dp),
+            .background(MaterialTheme.colorScheme.surfaceVariant, AppleUi.Control)
+            .padding(3.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp)
     ) {
         options.forEachIndexed { index, label ->
@@ -182,21 +173,22 @@ private fun FontSizeSelector(selected: Int, onSelected: (Int) -> Unit) {
                     .weight(1f)
                     .height(44.dp)
                     .onFocusChanged { focused = it.isFocused }
+                    .clip(AppleUi.Control)
                     .border(
                         if (focused) 2.dp else 1.dp,
                         if (focused) UiColors.Settings else Color.Transparent,
-                        MaterialTheme.shapes.small
+                        AppleUi.Control
                     )
                     .clickable { onSelected(index) }
                     .background(
-                        if (active) UiColors.Settings else Color.Transparent,
-                        MaterialTheme.shapes.small
+                        if (active) Color.White else Color.Transparent,
+                        AppleUi.Control
                     ),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = label,
-                    color = if (active) Color.White else MaterialTheme.colorScheme.onSurface,
+                    color = if (active) UiColors.Info else MaterialTheme.colorScheme.onSurface,
                     fontSize = 14.sp,
                     fontWeight = if (active) FontWeight.SemiBold else FontWeight.Normal,
                     maxLines = 1,

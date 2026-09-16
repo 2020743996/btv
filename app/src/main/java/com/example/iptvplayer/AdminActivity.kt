@@ -68,56 +68,16 @@ fun AdminScreen(
                 vertical = if (compact) 16.dp else 24.dp
             )
     ) {
-        PageHeader(title = "频道管理", subtitle = "源地址、失效线路与运行记录", onBack = onExit)
-
+        PageHeader(title = "频道管理", onBack = onExit)
         Spacer(modifier = Modifier.height(24.dp))
-
-        ActionButton(
-            "源地址管理",
-            modifier = Modifier.fillMaxWidth(),
-            icon = UiIcons.Pencil,
-            accentColor = UiColors.Edit,
-            onClick = onOpenAddresses
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            "添加/修改/删除 M3U 频道源地址",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        ActionButton(
-            "失效线路管理",
-            modifier = Modifier.fillMaxWidth(),
-            icon = UiIcons.Trash,
-            accentColor = UiColors.Delete,
-            onClick = onOpenDeadChannels
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            "查看被隐藏的失效线路，重新检测或清除记录",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-
-        ActionButton(
-            "运行日志",
-            modifier = Modifier.fillMaxWidth(),
-            icon = UiIcons.Info,
-            accentColor = UiColors.Info,
-            onClick = onOpenLogs
-        )
-        Spacer(modifier = Modifier.height(8.dp))
-        Text(
-            "最近 100 条运行记录，帮助排查问题",
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontSize = 13.sp
-        )
-
-        Spacer(modifier = Modifier.height(20.dp))
+        SectionLabel("频道源")
+        NavigationRow("源地址管理", UiIcons.Pencil, onOpenAddresses)
+        ListSeparator(inset = 48.dp)
+        NavigationRow("失效线路管理", UiIcons.Gauge, onOpenDeadChannels)
+        ListSeparator(inset = 48.dp)
+        Spacer(modifier = Modifier.height(24.dp))
+        SectionLabel("诊断")
+        NavigationRow("运行日志", UiIcons.Info, onOpenLogs)
+        ListSeparator(inset = 48.dp)
     }
 }

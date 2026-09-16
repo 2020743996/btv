@@ -45,7 +45,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontFamily
@@ -630,31 +629,24 @@ fun PlayerScreen(
                 }
                 Column(
                     modifier = Modifier
-                        .padding(20.dp)
-                        .shadow(
-                            14.dp,
-                            MaterialTheme.shapes.large,
-                            ambientColor = Color.Black.copy(alpha = 0.28f),
-                            spotColor = UiColors.Live.copy(alpha = 0.16f)
-                        )
-                        .border(1.dp, Color.White.copy(alpha = 0.28f), MaterialTheme.shapes.large)
-                        .background(Color(0xB8141817), MaterialTheme.shapes.large)
-                        .padding(horizontal = 16.dp, vertical = 11.dp)
+                        .padding(16.dp)
                         .widthIn(max = 420.dp)
                         .fillMaxWidth(0.9f)
+                        .glassSurface(shape = AppleUi.Panel)
+                        .padding(16.dp)
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         ChannelLogo(
                             name = channelName,
                             logoUrl = channelLogoUrl,
                             size = 52.dp,
-                            selected = true
+                            selected = false
                         )
                         Spacer(modifier = Modifier.width(12.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 channelName,
-                                color = Color.White,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
@@ -662,7 +654,7 @@ fun PlayerScreen(
                             )
                             Text(
                                 schedule.current?.let { "正在播  ${it.title}" } ?: lineDetails,
-                                color = Color(0xFFD7D4D0),
+                                color = AppleUi.Secondary,
                                 fontSize = 13.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis
@@ -670,18 +662,17 @@ fun PlayerScreen(
                             schedule.next?.let { next ->
                                 Text(
                                     "接下来  ${formatProgrammeTime(next)}  ${next.title}",
-                                    color = Color(0xFF85D1C4),
+                                    color = UiColors.Info,
                                     fontSize = 12.sp,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
-                        Column(horizontalAlignment = Alignment.End) {
-                            Text(channelPosition, color = Color.White, fontSize = 13.sp)
-                            Text(lineDetails, color = Color(0xFFD7D4D0), fontSize = 11.sp)
-                        }
                     }
+                    Spacer(Modifier.height(10.dp))
+                    Text(listOf(channelPosition, lineDetails).filter { it.isNotBlank() }.joinToString(" · "),
+                        color = AppleUi.Secondary, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
             }
         }
@@ -730,14 +721,7 @@ fun ChannelSelectOverlay(
             .padding(12.dp)
             .fillMaxHeight()
             .then(panelWidthModifier)
-            .shadow(
-                16.dp,
-                MaterialTheme.shapes.large,
-                ambientColor = Color.Black.copy(alpha = 0.22f),
-                spotColor = UiColors.Live.copy(alpha = 0.12f)
-            )
-            .border(1.dp, Color.White, MaterialTheme.shapes.large)
-            .background(Color.White.copy(alpha = 0.92f), MaterialTheme.shapes.large)
+            .glassSurface(shape = AppleUi.Panel)
             .padding(vertical = 14.dp)
     ) {
         Row(
@@ -775,13 +759,13 @@ fun ChannelSelectOverlay(
                         .heightIn(min = 52.dp)
                         .clickable { onChannelSelected(index) }
                         .background(
-                            if (selected) SolidColor(UiColors.Live.copy(alpha = 0.11f))
+                            if (selected) SolidColor(UiColors.Info.copy(alpha = 0.08f))
                             else SolidColor(Color.Transparent),
                             MaterialTheme.shapes.small
                         )
                         .border(
                             2.dp,
-                            if (selected) UiColors.Live else Color.Transparent,
+                            if (selected) UiColors.Info else Color.Transparent,
                             MaterialTheme.shapes.small
                         )
                         .padding(horizontal = 10.dp, vertical = 6.dp),

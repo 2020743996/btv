@@ -23,6 +23,11 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.TooltipBox
+import androidx.compose.material3.TooltipDefaults
+import androidx.compose.material3.PlainTooltip
+import androidx.compose.material3.rememberTooltipState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -31,7 +36,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -172,6 +176,7 @@ internal fun needsDarkLogoBackground(pixels: IntArray): Boolean {
 
 /** 顶部工具栏操作。手机只显示熟悉图标，电视/平板显示图标和文字。 */
 @Composable
+@OptIn(ExperimentalMaterial3Api::class)
 fun ToolbarAction(
     icon: ImageVector,
     label: String,
@@ -180,34 +185,28 @@ fun ToolbarAction(
     showLabel: Boolean = true,
     enabled: Boolean = true,
     active: Boolean = false,
-    accentColor: Color = UiColors.Live
+    accentColor: Color = UiColors.Info,
+    grouped: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
     val emphasized = focused || active
-    val background = when {
-        !enabled -> Color.White.copy(alpha = 0.55f)
-        emphasized -> accentColor.copy(alpha = 0.13f)
-        else -> Color.White.copy(alpha = 0.82f)
-    }
     val contentColor = if (enabled) accentColor else MaterialTheme.colorScheme.onSurfaceVariant
+    TooltipBox(
+        positionProvider = TooltipDefaults.rememberPlainTooltipPositionProvider(),
+        tooltip = { PlainTooltip { Text(label) } },
+        state = rememberTooltipState()
+    ) {
     Row(
         modifier = modifier
             .height(44.dp)
             .onFocusChanged { focused = it.isFocused }
-            .shadow(
-                elevation = if (focused) 8.dp else 3.dp,
-                shape = MaterialTheme.shapes.large,
-                ambientColor = accentColor.copy(alpha = 0.18f),
-                spotColor = accentColor.copy(alpha = 0.16f)
-            )
-            .border(
-                width = if (focused) 2.dp else 1.dp,
-                color = if (focused) accentColor else Color.White,
-                shape = MaterialTheme.shapes.large
-            )
+            .then(if (!grouped) Modifier.glassSurface(focused = focused, tinted = active)
+                else Modifier.clip(AppleUi.Control)
+                    .background(if (emphasized) accentColor.copy(alpha = 0.1f) else Color.Transparent)
+                    .border(if (focused) 2.dp else 0.dp,
+                        if (focused) accentColor else Color.Transparent, AppleUi.Control))
             .clickable(enabled = enabled, onClick = onClick)
-            .background(background, MaterialTheme.shapes.large)
-            .padding(horizontal = if (showLabel) 12.dp else 10.dp),
+            .padding(horizontal = if (showLabel) 14.dp else 11.dp),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.Center
     ) {
@@ -223,6 +222,7 @@ fun ToolbarAction(
             )
         }
     }
+    }
 }
 
 @Composable
@@ -231,15 +231,16 @@ fun PageHeader(
     modifier: Modifier = Modifier,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
+    compactActions: Boolean = false,
     actions: (@Composable RowScope.() -> Unit)? = null
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
-        val stackActions = actions != null && shouldStackHeaderActions(maxWidth)
+        val stackActions = actions != null && shouldStackHeaderActions(maxWidth) && !compactActions
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 if (onBack != null) {
                     ToolbarAction(
-                        icon = UiIcons.ArrowLeft,
+                        icon = UiIcons.ChevronLeft,
                         label = "返回",
                         onClick = onBack,
                         showLabel = false,

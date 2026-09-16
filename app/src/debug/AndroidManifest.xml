@@ -3,6 +3,7 @@
         <!-- Keep the Compose test host alive while the test selects its viewport. -->
         <activity
             android:name="androidx.activity.ComponentActivity"
+            android:theme="@style/Theme.IptvPlayer"
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:windowSoftInputMode="adjustResize" />
     </application>

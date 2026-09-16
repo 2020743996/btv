@@ -220,7 +220,8 @@ private fun SearchTextField(query: String, onQueryChange: (String) -> Unit) {
         value = query,
         onValueChange = onQueryChange,
         singleLine = true,
-        placeholder = { Text("输入频道名或拼音，如：hnws") },
+        shape = AppleUi.Field,
+        placeholder = { Text("搜索频道") },
         leadingIcon = { Icon(UiIcons.Search, contentDescription = null, tint = UiColors.Search) },
         trailingIcon = {
             if (query.isNotEmpty()) {
@@ -278,17 +279,8 @@ private fun HistoryChip(word: String, onClick: () -> Unit) {
         modifier = Modifier
             .height(36.dp)
             .onFocusChanged { focused = it.isFocused }
-            .border(
-                if (focused) 2.dp else 1.dp,
-                if (focused) UiColors.Search else Color.White,
-                MaterialTheme.shapes.small
-            )
+            .glassSurface(focused = focused)
             .clickable(onClick = onClick)
-            .background(
-                if (focused) SolidColor(UiColors.Search.copy(alpha = 0.10f))
-                else SolidColor(Color.White.copy(alpha = 0.82f)),
-                MaterialTheme.shapes.small
-            )
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center
     ) {
@@ -312,7 +304,7 @@ private fun SearchResults(
 ) {
     if (results.isEmpty()) {
         Text(
-            if (query.isBlank()) "输入拼音可搜中文频道（hnws → 湖南卫视）" else "没有匹配的频道",
+            if (query.isBlank()) "搜索频道" else "没有匹配的频道",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 16.sp,
             modifier = Modifier.padding(top = 20.dp)
@@ -334,7 +326,7 @@ private fun SearchResults(
                         .onFocusChanged { focused = it.isFocused }
                         .border(
                             if (focused) 2.dp else 1.dp,
-                            if (focused) UiColors.Search else MaterialTheme.colorScheme.outline,
+                            if (focused) UiColors.Search else Color.Transparent,
                             MaterialTheme.shapes.small
                         )
                         .clickable { onPlay(channel) }
@@ -342,7 +334,7 @@ private fun SearchResults(
                             SolidColor(MaterialTheme.colorScheme.surface),
                             MaterialTheme.shapes.small
                         )
-                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                        .padding(horizontal = 4.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (!compact) {
@@ -386,7 +378,7 @@ private fun SearchResults(
                         )
                     }
                 }
-                Spacer(modifier = Modifier.height(4.dp))
+                ListSeparator(inset = 59.dp)
             }
         }
     }

@@ -18,5 +18,7 @@ class ResponsiveUiTest {
         assertFalse(usesTwoPaneChannelLayout(WindowType.COMPACT))
         assertFalse(usesTwoPaneChannelLayout(WindowType.MEDIUM))
         assertTrue(usesTwoPaneChannelLayout(WindowType.EXPANDED))
+        assertFalse(usesTwoPaneChannelLayout(WindowType.EXPANDED, 411))
+        assertTrue(usesTwoPaneChannelLayout(WindowType.EXPANDED, 800))
     }
 }

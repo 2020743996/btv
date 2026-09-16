@@ -46,11 +46,11 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -452,7 +452,7 @@ fun ChannelList(
 
     // 自适应：电视/平板用"左分组 + 右频道"两栏，手机用"顶部横向分组 + 下方列表"单栏。
     // 手机横屏仍使用单栏，避免 600~840dp 宽度被固定侧栏挤压。
-    val isWide = usesTwoPaneChannelLayout(rememberWindowType())
+    val isWide = useWideChannelLayout()
 
     Box(
         modifier = Modifier
@@ -469,7 +469,8 @@ fun ChannelList(
         ) {
             PageHeader(
                 title = "btv",
-                subtitle = "直播频道  ·  ${allChannels.size} 个频道",
+                subtitle = if (isWide) "直播" else null,
+                compactActions = !isWide,
                 actions = {
                     TopBarButtons(
                         elderMode,
@@ -503,9 +504,7 @@ fun ChannelList(
                         modifier = Modifier
                             .width(220.dp)
                             .fillMaxHeight()
-                            .shadow(8.dp, MaterialTheme.shapes.large)
-                            .border(1.dp, Color.White, MaterialTheme.shapes.large)
-                            .background(Color.White.copy(alpha = 0.84f), MaterialTheme.shapes.large)
+                            .background(AppleUi.Chrome)
                             .padding(8.dp),
                         contentPadding = PaddingValues(bottom = 12.dp),
                         verticalArrangement = Arrangement.spacedBy(6.dp)
@@ -534,6 +533,7 @@ fun ChannelList(
             } else {
                 // ===== 手机：顶部横向分组 chips + 下方频道列表 =====
                 LazyRow(
+                    modifier = Modifier.background(AppleUi.Chrome, AppleUi.Control).padding(3.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     contentPadding = PaddingValues(horizontal = 2.dp)
                 ) {
@@ -560,8 +560,12 @@ fun ChannelList(
     }
 }
 
-internal fun usesTwoPaneChannelLayout(windowType: WindowType): Boolean =
-    windowType == WindowType.EXPANDED
+internal fun usesTwoPaneChannelLayout(windowType: WindowType, heightDp: Int = Int.MAX_VALUE): Boolean =
+    windowType == WindowType.EXPANDED && heightDp >= 480
+
+@Composable
+private fun useWideChannelLayout(): Boolean = isTvDevice(LocalContext.current) ||
+    usesTwoPaneChannelLayout(rememberWindowType(), LocalConfiguration.current.screenHeightDp)
 
 /** 顶部操作按钮行（电视放标题右侧，手机窄屏放第二行）。 */
 @Composable
@@ -574,21 +578,22 @@ private fun TopBarButtons(
     onSpeedTest: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    val compact = rememberWindowType() == WindowType.COMPACT
+    val compact = !useWideChannelLayout()
     fun testLabel(): String {
         val progress = testProgress
         return if (isTesting && progress != null) "${progress.first}/${progress.second}"
         else if (isTesting) "测速中" else "测速"
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(if (compact) 4.dp else 8.dp)) {
-        ToolbarAction(UiIcons.Search, "搜索", onOpenSearch, showLabel = !compact, accentColor = UiColors.Search)
-        ToolbarAction(UiIcons.Refresh, "刷新", onRefresh, showLabel = !compact, accentColor = UiColors.Refresh)
+    Row(modifier = Modifier.glassSurface().padding(2.dp), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
+        ToolbarAction(UiIcons.Search, "搜索", onOpenSearch, showLabel = !compact, grouped = true)
+        ToolbarAction(UiIcons.Refresh, "刷新", onRefresh, showLabel = !compact, grouped = true)
         if (!elderMode) {
             ToolbarAction(
                 icon = if (isTesting) UiIcons.X else UiIcons.Gauge,
                 label = if (isTesting) "取消测速" else testLabel(),
                 onClick = onSpeedTest,
                 showLabel = !compact,
+                grouped = true,
                 accentColor = UiColors.Speed
             )
         }
@@ -597,6 +602,7 @@ private fun TopBarButtons(
             "设置",
             onOpenSettings,
             showLabel = !compact,
+            grouped = true,
             accentColor = UiColors.Settings
         )
     }
@@ -617,6 +623,8 @@ private fun ChannelListContent(
             Text(
                 selectedGroup.name,
                 style = MaterialTheme.typography.headlineMedium,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.weight(1f)
             )
@@ -630,7 +638,7 @@ private fun ChannelListContent(
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(6.dp)
+            verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
             itemsIndexed(selectedGroup.channels, key = { _, channel -> channel.name }) { index, channel ->
                 // epgRevision 变化时重新读取当前节目（remember 以它为键触发重算）。
@@ -646,6 +654,7 @@ private fun ChannelListContent(
                     onClick = { onChannelClick(channel) },
                     onToggleFavorite = { onToggleFavorite(channel) }
                 )
+                ListSeparator(inset = 66.dp)
             }
         }
     }
@@ -659,29 +668,24 @@ private fun GroupChip(name: String, count: Int, selected: Boolean, onClick: () -
         modifier = Modifier
             .height(40.dp)
             .onFocusChanged { focused = it.isFocused }
-            .shadow(
-                elevation = if (focused) 7.dp else 2.dp,
-                shape = MaterialTheme.shapes.large,
-                ambientColor = UiColors.Live.copy(alpha = 0.14f),
-                spotColor = UiColors.Live.copy(alpha = 0.12f)
-            )
+            .clip(AppleUi.Control)
             .border(
                 if (focused) 2.dp else 1.dp,
-                if (focused) UiColors.Live else Color.White,
-                MaterialTheme.shapes.large
+                if (focused) UiColors.Info else Color.Transparent,
+                AppleUi.Control
             )
             .clickable(onClick = onClick)
             .background(
-                if (selected) SolidColor(UiColors.Live.copy(alpha = 0.12f))
-                else SolidColor(Color.White.copy(alpha = 0.82f)),
-                MaterialTheme.shapes.large
+                if (selected) SolidColor(Color.White)
+                else SolidColor(Color.Transparent),
+                AppleUi.Control
             )
             .padding(horizontal = 16.dp),
         contentAlignment = Alignment.Center
     ) {
         Text(
             "$name $count",
-            color = if (selected) UiColors.Live else MaterialTheme.colorScheme.onSurface,
+            color = if (selected) UiColors.Info else MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 14.sp,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis
@@ -700,12 +704,12 @@ private fun GroupRow(name: String, count: Int, selected: Boolean, onClick: () ->
             .onFocusChanged { focused = it.isFocused }
             .border(
                 if (focused) 2.dp else 1.dp,
-                if (focused) UiColors.Live else Color.White,
+                if (focused) UiColors.Info else Color.Transparent,
                 MaterialTheme.shapes.small
             )
             .clickable(onClick = onClick)
             .background(
-                if (active) SolidColor(UiColors.Live.copy(alpha = 0.08f))
+                if (active) SolidColor(Color.White)
                 else SolidColor(Color.Transparent),
                 MaterialTheme.shapes.small
             )
@@ -722,7 +726,7 @@ private fun GroupRow(name: String, count: Int, selected: Boolean, onClick: () ->
         Spacer(modifier = Modifier.width(10.dp))
         Text(
             name,
-            color = if (selected) UiColors.Live else MaterialTheme.colorScheme.onSurfaceVariant,
+            color = if (selected) UiColors.Info else MaterialTheme.colorScheme.onSurfaceVariant,
             fontSize = 15.sp,
             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
@@ -743,116 +747,34 @@ fun ChannelRow(
     onClick: () -> Unit,
     onToggleFavorite: () -> Unit
 ) {
-    var isFocused by remember { mutableStateOf(false) }
-    var favoriteFocused by remember { mutableStateOf(false) }
-    val compact = rememberWindowType() == WindowType.COMPACT
-    val nameColor = if (status == "不可用") {
-        MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.55f)
-    } else MaterialTheme.colorScheme.onSurface
-    val statusColor = when {
-        status == null -> MaterialTheme.colorScheme.onSurfaceVariant
-        status.endsWith("流畅") -> MaterialTheme.colorScheme.secondary
-        status.endsWith("一般") -> MaterialTheme.colorScheme.tertiary
-        else -> MaterialTheme.colorScheme.error
-    }
-
+    var focused by remember { mutableStateOf(false) }
+    val wide = useWideChannelLayout()
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .heightIn(min = 72.dp)
-            .onFocusChanged { isFocused = it.isFocused }
-            .border(
-                if (isFocused) 2.dp else 1.dp,
-                if (isFocused) UiColors.Live else MaterialTheme.colorScheme.outline,
-                MaterialTheme.shapes.small
-            )
-            .clickable(onClick = onClick)
-            .background(
-                SolidColor(MaterialTheme.colorScheme.surface),
-                MaterialTheme.shapes.small
-            )
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+        Modifier.fillMaxWidth().heightIn(min = 76.dp)
+            .onFocusChanged { focused = it.isFocused }
+            .clip(MaterialTheme.shapes.medium)
+            .background(if (focused) UiColors.Info.copy(alpha = 0.06f) else Color.White)
+            .border(if (focused) 2.dp else 0.dp,
+                if (focused) UiColors.Info else Color.Transparent, MaterialTheme.shapes.medium)
+            .clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        if (!compact) {
-            Text(
-                index.toString().padStart(3, '0'),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
-                modifier = Modifier.width(36.dp)
-            )
+        if (wide) {
+            Text(index.toString().padStart(3, '0'), color = AppleUi.Secondary,
+                fontSize = 12.sp, modifier = Modifier.width(36.dp))
         }
-        ChannelLogo(channel = channel, size = if (compact) 44.dp else 48.dp)
-        Spacer(modifier = Modifier.width(if (compact) 10.dp else 12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    channel.name,
-                    color = nameColor,
-                    fontSize = 17.sp,
-                    fontWeight = FontWeight.Medium,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                if (compact && status != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(status, color = statusColor, fontSize = 11.sp, maxLines = 1)
-                }
-            }
-            Text(
-                nowPlaying ?: "${channel.urls.size} 条可选线路",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                fontSize = 12.sp,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
+        ChannelLogo(channel, size = 48.dp)
+        Spacer(Modifier.width(14.dp))
+        Column(Modifier.weight(1f)) {
+            Text(channel.name, fontSize = 17.sp, fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Spacer(Modifier.height(3.dp))
+            Text(listOfNotNull(nowPlaying ?: "${channel.urls.size} 条线路", status).joinToString(" · "),
+                color = if (status == "不可用") MaterialTheme.colorScheme.error else AppleUi.Secondary,
+                fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
-
-        if (!compact && status != null) {
-            Box(modifier = Modifier.size(7.dp).clip(CircleShape).background(statusColor))
-            Spacer(modifier = Modifier.width(7.dp))
-            Text(
-                status,
-                color = statusColor,
-                fontSize = 12.sp
-            )
-            Spacer(modifier = Modifier.width(12.dp))
-        }
-
-        Box(
-            modifier = Modifier
-                .size(42.dp)
-                .onFocusChanged { favoriteFocused = it.isFocused }
-                .border(
-                    2.dp,
-                    if (favoriteFocused) MaterialTheme.colorScheme.primary else Color.Transparent,
-                    MaterialTheme.shapes.small
-                )
-                .clickable(onClick = onToggleFavorite)
-                .background(
-                    if (isFavorite) UiColors.Favorite.copy(alpha = 0.12f)
-                    else Color.Transparent,
-                    MaterialTheme.shapes.small
-                ),
-            contentAlignment = Alignment.Center
-        ) {
-            Icon(
-                imageVector = UiIcons.Heart,
-                contentDescription = if (isFavorite) "取消收藏" else "收藏",
-                tint = if (isFavorite) UiColors.Favorite
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(21.dp)
-            )
-        }
-        if (!compact) {
-            Icon(
-                imageVector = UiIcons.Play,
-                contentDescription = "播放",
-                tint = if (isFocused) UiColors.Live
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.size(22.dp)
-            )
-        }
+        ToolbarAction(UiIcons.Heart, if (isFavorite) "取消收藏" else "收藏", onToggleFavorite,
+            showLabel = false, grouped = true, active = isFavorite,
+            accentColor = if (isFavorite) UiColors.Favorite else AppleUi.Secondary)
     }
 }

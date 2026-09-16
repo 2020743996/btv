@@ -1,16 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <style name="Theme.IptvPlayer.Base" parent="android:Theme.Material.Light.NoActionBar">
-        <item name="android:windowBackground">@android:color/white</item>
-        <item name="android:statusBarColor">@android:color/white</item>
-        <item name="android:navigationBarColor">@android:color/black</item>
-        <item name="android:windowLightStatusBar">true</item>
+    <style name="Theme.IptvPlayer" parent="Theme.IptvPlayer.Base">
+        <item name="android:navigationBarColor">@android:color/white</item>
+        <item name="android:windowLightNavigationBar">true</item>
     </style>
-    <style name="Theme.IptvPlayer" parent="Theme.IptvPlayer.Base" />
     <style name="Theme.IptvPlayer.Playback" parent="Theme.IptvPlayer">
         <item name="android:windowBackground">@android:color/black</item>
         <item name="android:statusBarColor">@android:color/black</item>
         <item name="android:navigationBarColor">@android:color/black</item>
         <item name="android:windowLightStatusBar">false</item>
+        <item name="android:windowLightNavigationBar">false</item>
     </style>
 </resources>
