@@ -1,6 +1,6 @@
-# 苹果风格 UI 预览
+# 苹果风格 UI
 
-版本：1.11.0-preview.1。当前为 main 上的 UI 预览，不替换 GitHub 上的正式版。
+版本：1.11.0。由已验证的 1.11.0-preview.1 转为正式版，UI 与操作逻辑保持一致。
 
 ## 设计方向
 
@@ -38,6 +38,8 @@
 
 最终结果：49 项单元测试通过；Android 15 手机模拟器横、竖屏各 10 项交互测试通过，共 20 次。Lint 0 错误、9 项依赖/资源提示；签名 APK 构建与 v2 签名验证通过。Android 8.0 的导航栏使用深色兼容样式，但未在 Android 8.0 真机运行。
 
-预览包位于 `app/build/outputs/apk/release/btv-1.11.0-preview.1.apk`，截图位于 `app/build/outputs/ui-preview/`。APK SHA-256：`7b3f5bd2ea2436087b4c50eda030915cc769e5da0d0812c5496fcddd2c70cdfd`。
+正式安装包位于 `app/build/outputs/apk/release/app-release.apk`，下载见 [v1.11.0 Release](https://github.com/2020743996/btv/releases/tag/v1.11.0)。预览阶段截图位于 `app/build/outputs/ui-preview/`。
+
+正式包 SHA-256：`d1d255e8b15276a8e1c4011d356ea55227071822976f4735edc48145917d2ce6`。正式化后重新执行的单元测试、Lint 和签名构建通过；设备交互结果来自相同 UI 代码的预览阶段。
 
 截图使用本地测试频道和无台标地址的占位状态，不代表内置频道源。此次不验证苹果原生材质一致性，也不替代电视遥控器真机和长时间直播测试。
