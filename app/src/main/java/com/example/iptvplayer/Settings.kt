@@ -33,6 +33,13 @@ private val failRecordLock = Any()
 private fun prefs(context: Context): SharedPreferences =
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
 
+fun getPictureMode(context: Context): PictureMode =
+    PictureMode.fromStored(prefs(context).getString("picture_mode", null))
+
+fun setPictureMode(context: Context, mode: PictureMode) {
+    prefs(context).edit().putString("picture_mode", mode.name).apply()
+}
+
 /** 读取保存的所有 M3U 地址；没设置过就返回空列表（首次使用需要手动添加源） */
 fun getM3uUrls(context: Context): List<String> {
     val p = prefs(context)

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -55,6 +57,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.media3.common.MediaItem
+import androidx.media3.common.C
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.Player
 import androidx.media3.common.VideoSize
@@ -87,8 +90,24 @@ class PlayerActivity : ComponentActivity() {
     private var channelInfoVisible by mutableStateOf(true)
     private var playbackQuality by mutableStateOf<String?>(null)
 
-    private var urls: List<String> = emptyList()
-    private var currentLineIndex = 0
+    private var urls by mutableStateOf<List<String>>(emptyList())
+    private var currentLineIndex by mutableIntStateOf(0)
+    private var failedAttemptUrls by mutableStateOf<Set<String>>(emptySet())
+    private var menuVisible by mutableStateOf(false)
+    private var pictureMode by mutableStateOf(PictureMode.FIT)
+    private val sleepTimer = SleepTimer()
+    private var sleepRemaining by mutableStateOf<Int?>(null)
+    private var sleepDuration by mutableIntStateOf(0)
+    private val sleepTick = object : Runnable {
+        override fun run() {
+            val now = SystemClock.elapsedRealtime()
+            sleepRemaining = sleepTimer.remainingMinutes(now)
+            if (sleepTimer.isExpired(now)) {
+                player?.pause()
+                finish()
+            } else if (sleepRemaining != null) mainHandler.postDelayed(this, 1_000L)
+        }
+    }
     private var channelName by mutableStateOf("")
     private var channelIndex = -1
     private var totalChannels = 0
@@ -122,6 +141,7 @@ class PlayerActivity : ComponentActivity() {
     @UnstableApi
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pictureMode = getPictureMode(this)
 
         // 播放页沉浸式全屏：隐藏系统栏（状态栏/导航栏），滑动可临时呼出。
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -238,12 +258,70 @@ class PlayerActivity : ComponentActivity() {
                     playingIndex = channelIndex,
                     onChannelSelected = { index -> playChannelAt(index) },
                     onRetry = { startFromFirst() },
-                    onBack = { finish() }
+                    onBack = { finish() },
+                    pictureMode = pictureMode,
+                    onOpenMenu = { menuVisible = true }
                 )
+                if (menuVisible) MenuContent()
             }
         }
 
         startFromFirst()
+    }
+
+    @UnstableApi
+    @Composable
+    private fun MenuContent() {
+        var epgTick by remember { mutableIntStateOf(0) }
+        LaunchedEffect(Unit) {
+            lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (true) {
+                    refreshConfiguredEpg()
+                    epgTick++
+                    delay(30_000L)
+                }
+            }
+        }
+        val programmes = remember(channelTvgIds, epgTick) { EpgCache.guide(channelTvgIds) }
+        PlaybackMenu(player, playbackLineChoices(), pictureMode, sleepRemaining, programmes,
+            onLine = ::selectLine,
+            onPicture = ::changePictureMode,
+            onSleep = ::configureSleepTimer,
+            onChannels = { menuVisible = false; openChannelList() },
+            onDismiss = { menuVisible = false },
+            timerMinutes = sleepDuration)
+    }
+
+    private fun playbackLineChoices(): List<PlaybackChoice> {
+        val channel = ChannelCache.channels.firstOrNull { it.name == channelName }
+        return urls.mapIndexed { index, url ->
+            val quality = channel?.lineQuality?.firstOrNull { it.url == url }
+            PlaybackChoice(index.toString(), "线路 ${index + 1}",
+                listOfNotNull(quality?.measuredResolution?.label ?: quality?.resolution?.label ?: channel?.urlQualityHints?.get(url),
+                    if (url in failedAttemptUrls) "本轮播放失败" else null)
+                    .joinToString(" · ").takeIf { it.isNotBlank() },
+                selected = index == currentLineIndex)
+        }
+    }
+
+    private fun selectLine(index: Int) {
+        if (index !in urls.indices) return
+        failedAttemptUrls = emptySet()
+        currentLineIndex = index
+        lineTransitionInProgress = false
+        startPlayback(urls[index], "正在切换线路…")
+    }
+
+    private fun changePictureMode(mode: PictureMode) {
+        pictureMode = mode
+        setPictureMode(this, mode)
+    }
+
+    private fun configureSleepTimer(minutes: Int) {
+        sleepTimer.set(minutes, SystemClock.elapsedRealtime())
+        sleepDuration = sleepTimer.durationMinutes
+        mainHandler.removeCallbacks(sleepTick)
+        sleepTick.run()
     }
 
     /** 换台/选台的公共入口：更新当前频道状态、记录最近观看并从头开始播放。 */
@@ -272,6 +350,7 @@ class PlayerActivity : ComponentActivity() {
     // PlayerView 会优先消费方向键，因此需要在 Activity 最外层拦截换台按键。
     @SuppressLint("RestrictedApi")
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
+        if (menuVisible) return super.dispatchKeyEvent(event)
         if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
 
         // 悬浮频道面板打开时：方向键只移动选择，OK 播放，BACK/LEFT 关闭。
@@ -316,7 +395,11 @@ class PlayerActivity : ComponentActivity() {
                 if (event.repeatCount == 0) switchChannel(1)
                 return true
             }
-            KeyEvent.KEYCODE_INFO, KeyEvent.KEYCODE_MENU -> {
+            KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_DPAD_RIGHT -> {
+                if (event.repeatCount == 0) menuVisible = true
+                return true
+            }
+            KeyEvent.KEYCODE_INFO -> {
                 showChannelInfoBriefly()
                 return true
             }
@@ -343,6 +426,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun startFromFirst() {
         lineTransitionInProgress = false
+        failedAttemptUrls = emptySet()
         urls = prioritizePlaybackUrls(urls) { url -> getFailCount(this, url) }
         currentLineIndex = 0
         if (urls.isEmpty()) {
@@ -357,8 +441,10 @@ class PlayerActivity : ComponentActivity() {
         lineTransitionInProgress = true
         cancelPlaybackTimeout()
         recordCurrentAttempt(success = false)
-        if (currentLineIndex + 1 < urls.size) {
-            currentLineIndex++
+        currentAttemptUrl?.let { failedAttemptUrls = failedAttemptUrls + it }
+        val nextIndex = nextUntriedLine(urls, currentLineIndex, failedAttemptUrls)
+        if (nextIndex != null) {
+            currentLineIndex = nextIndex
             AppLog.log("$channelName $reason，切换到线路 ${currentLineIndex + 1}/${urls.size}")
             startPlayback(
                 urls[currentLineIndex],
@@ -394,6 +480,10 @@ class PlayerActivity : ComponentActivity() {
             )
             .build()
         exoPlayer.stop()
+        exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+            .build()
         exoPlayer.clearMediaItems()
         exoPlayer.setMediaItem(mediaItem)
         exoPlayer.prepare()
@@ -455,6 +545,10 @@ class PlayerActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        if (sleepTimer.isExpired(SystemClock.elapsedRealtime())) {
+            finish()
+            return
+        }
         if (playerState != PlayerUiState.ERROR) {
             player?.play()
             if (playerState == PlayerUiState.LOADING) {
@@ -512,7 +606,9 @@ fun PlayerScreen(
     playingIndex: Int,
     onChannelSelected: (Int) -> Unit,
     onRetry: () -> Unit,
-    onBack: () -> Unit
+    onBack: () -> Unit,
+    pictureMode: PictureMode = PictureMode.FIT,
+    onOpenMenu: () -> Unit = {}
 ) {
     var epgRefreshTick by remember { mutableIntStateOf(0) }
     val lifecycle = (LocalContext.current as ComponentActivity).lifecycle
@@ -558,6 +654,11 @@ fun PlayerScreen(
             update = { view ->
                 view.player = player
                 view.useController = playerState == PlayerUiState.PLAYING
+                view.resizeMode = when (pictureMode) {
+                    PictureMode.FIT -> AspectRatioFrameLayout.RESIZE_MODE_FIT
+                    PictureMode.ZOOM -> AspectRatioFrameLayout.RESIZE_MODE_ZOOM
+                    PictureMode.FILL -> AspectRatioFrameLayout.RESIZE_MODE_FILL
+                }
             }
         )
 
@@ -629,9 +730,10 @@ fun PlayerScreen(
                 }
                 Column(
                     modifier = Modifier
-                        .padding(16.dp)
+                        .safeDrawingPadding()
+                        .padding(start = 16.dp, top = 16.dp, end = 76.dp, bottom = 16.dp)
                         .widthIn(max = 420.dp)
-                        .fillMaxWidth(0.9f)
+                        .fillMaxWidth()
                         .glassSurface(shape = AppleUi.Panel)
                         .padding(16.dp)
                 ) {
@@ -676,6 +778,10 @@ fun PlayerScreen(
                 }
             }
         }
+
+        ToolbarAction(UiIcons.Sliders, "播放选项", onOpenMenu,
+            modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(16.dp),
+            showLabel = false)
 
         // 左侧悬浮频道列表：覆盖在画面上选台，不用返回列表页。
         if (channelListVisible) {

@@ -243,6 +243,16 @@ object EpgCache {
 
     fun currentProgramme(tvgIds: List<String>, now: Date = Date()): Programme? =
         schedule(tvgIds, now).current
+
+    fun guide(tvgIds: List<String>, now: Date = Date()): List<Programme> {
+        val snapshot = programmesByChannel
+        return tvgIds.map(::normalizeEpgChannelId).distinct()
+            .flatMap { snapshot[it].orEmpty() }
+            .filter { it.end.after(now) && it.end.after(it.start) &&
+                it.start.time < now.time + 24 * 60 * 60 * 1000L }
+            .distinctBy { Triple(it.start.time, it.end.time, it.title) }
+            .sortedBy { it.start }
+    }
 }
 
 /**
