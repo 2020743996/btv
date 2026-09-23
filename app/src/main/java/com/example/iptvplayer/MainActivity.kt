@@ -31,6 +31,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -71,6 +73,8 @@ import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 class MainActivity : ComponentActivity() {
     private var reloadKey by mutableIntStateOf(0)
@@ -101,8 +105,6 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class LoadedSource(val text: String, val channels: List<Channel>)
-
 @Composable
 fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Channel) -> Unit) {
     val context = LocalContext.current
@@ -124,9 +126,12 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
     LaunchedEffect(Unit) {
         (context as ComponentActivity).lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                refreshConfiguredEpg()
+                refreshConfiguredEpg(context)
                 epgRevision++
                 delay(60_000)
+                if (!isLoading && SourceStatuses.channels.any { it.health != SourceHealth.NORMAL }) {
+                    onReload()
+                }
             }
         }
     }
@@ -141,6 +146,7 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
      */
     fun autoPlayIfReady() {
         if (autoPlayedThisLaunch) return
+        if (!shouldAutoPlay(getStartupMode(context), isTvDevice(context))) return
         val all = groupedChannels.values.flatten()
         if (all.isEmpty()) return
         autoPlayedThisLaunch = true
@@ -206,7 +212,9 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
         val sourceUrls = getM3uUrls(context)
         if (sourceUrls.isEmpty()) {
             ChannelCache.update(emptyList(), emptyList())
+            SourceStatuses.channels = emptyList()
             EpgCache.configureSources(emptySet())
+            launch(Dispatchers.IO) { SourceSnapshots(context).retain(setOfNotNull(getEpgUrl(context))) }
             groupedChannels = emptyMap()
             sourceMissing = true
             isLoading = false
@@ -222,28 +230,20 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
 
         isLoading = true
         try {
+            val snapshots = SourceSnapshots(context)
             // 多个频道源互不依赖，并行下载可避免慢源依次拖长等待时间。
             val loadedSources = coroutineScope {
                 val limit = Semaphore(4)
                 sourceUrls.map { url ->
                     async {
-                        try {
-                            limit.withPermit {
-                                val text = downloadM3u(url)
-                                withContext(Dispatchers.Default) { LoadedSource(text, parseM3u(text)) }
-                            }
-                        } catch (e: CancellationException) {
-                            throw e
-                        } catch (e: Exception) {
-                            android.util.Log.w("IptvPlayer", "源下载失败（跳过）：$url", e)
-                            null
-                        }
+                        limit.withPermit { loadChannelSource(context, url) }
                     }
-                }.awaitAll().filterNotNull()
+                }.awaitAll()
             }
 
             val merged = withContext(Dispatchers.Default) { mergeChannels(loadedSources.flatMap { it.channels }) }
             if (sourceUrls != getM3uUrls(context)) return@LaunchedEffect
+            SourceStatuses.channels = loadedSources.map { it.status }
             if (merged.isEmpty()) {
                 val stale = ChannelCache.staleChannels(sourceUrls)
                 if (stale != null) {
@@ -255,16 +255,17 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
                     AppLog.log("加载失败：所有源都不可用")
                 }
             } else {
-                ChannelCache.update(merged, sourceUrls)
+                ChannelCache.update(merged, sourceUrls, complete = loadedSources.all { it.status.health == SourceHealth.NORMAL })
                 groupedChannels = withContext(Dispatchers.Default) { merged.groupBy { it.group } }
-                AppLog.log("加载成功：${merged.size} 个频道（${loadedSources.size} 个源）")
+                AppLog.log("加载完成：${merged.size} 个频道（${loadedSources.count { it.status.health == SourceHealth.NORMAL }}/${sourceUrls.size} 个源正常）")
 
-                val epgSources = loadedSources.flatMap { extractEpgUrls(it.text) }.toSet()
+                val epgSources = (loadedSources.flatMap { it.text?.let(::extractEpgUrls).orEmpty() } + listOfNotNull(getEpgUrl(context))).toSet()
                 EpgCache.configureSources(epgSources)
+                launch(Dispatchers.IO) { snapshots.retain(sourceUrls.toSet() + epgSources) }
                 if (epgSources.isNotEmpty()) {
                     // EPG 是增强信息，不阻塞频道列表先显示。
                     launch {
-                        refreshConfiguredEpg()
+                        refreshConfiguredEpg(context)
                         epgRevision++
                     }
                 }
@@ -294,7 +295,7 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
             errorMessage != null -> ErrorScreen(
                 errorMessage!!,
                 onRetry = onReload,
-                onOpenSettings = { context.startActivity(Intent(context, SettingsActivity::class.java)) }
+                onOpenSources = { context.startActivity(Intent(context, AddressActivity::class.java)) }
             )
             else -> ChannelList(
                 groupedChannels = groupedChannels,
@@ -313,6 +314,7 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
                 onSpeedTest = { toggleTest() },
                 onRefresh = onReload,
                 onOpenSearch = { context.startActivity(Intent(context, SearchActivity::class.java)) },
+                onOpenSources = { context.startActivity(Intent(context, AddressActivity::class.java)) },
                 onOpenSettings = { context.startActivity(Intent(context, SettingsActivity::class.java)) }
             )
         }
@@ -368,7 +370,7 @@ fun LoadingScreen(message: String) {
 }
 
 @Composable
-fun ErrorScreen(message: String, onRetry: () -> Unit, onOpenSettings: () -> Unit) {
+fun ErrorScreen(message: String, onRetry: () -> Unit, onOpenSources: () -> Unit) {
     Box(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background),
         contentAlignment = Alignment.Center
@@ -389,10 +391,10 @@ fun ErrorScreen(message: String, onRetry: () -> Unit, onOpenSettings: () -> Unit
                     onClick = onRetry
                 ),
                 secondary = UiAction(
-                    label = "去设置",
-                    icon = UiIcons.Sliders,
+                    label = "管理频道源",
+                    icon = UiIcons.Pencil,
                     accentColor = UiColors.Settings,
-                    onClick = onOpenSettings
+                    onClick = onOpenSources
                 ),
                 modifier = Modifier.widthIn(max = 420.dp),
                 stackOnCompact = true
@@ -430,6 +432,7 @@ fun ChannelList(
     onSpeedTest: () -> Unit,
     onRefresh: () -> Unit,
     onOpenSearch: () -> Unit,
+    onOpenSources: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
     val allChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
@@ -448,6 +451,7 @@ fun ChannelList(
         }
     }
     var selectedGroupKey by remember { mutableStateOf("all") }
+    var guideMode by rememberSaveable { mutableStateOf(false) }
     val selectedGroup = groups.firstOrNull { it.key == selectedGroupKey } ?: groups.first()
 
     // 自适应：电视/平板用"左分组 + 右频道"两栏，手机用"顶部横向分组 + 下方列表"单栏。
@@ -479,6 +483,7 @@ fun ChannelList(
                         onOpenSearch,
                         onRefresh,
                         onSpeedTest,
+                        onOpenSources,
                         onOpenSettings
                     )
                 }
@@ -495,14 +500,35 @@ fun ChannelList(
                     modifier = Modifier.padding(top = 8.dp)
                 )
             }
+            val degradedSources = SourceStatuses.channels.count { it.health != SourceHealth.NORMAL }
+            if (degradedSources > 0) {
+                Text(
+                    "$degradedSources 个频道源加载异常 · 查看源状态",
+                    color = MaterialTheme.colorScheme.error,
+                    fontSize = 13.sp,
+                    modifier = Modifier.padding(top = 8.dp).clickable(onClick = onOpenSources)
+                )
+            }
             Spacer(modifier = Modifier.height(if (isWide) 18.dp else 12.dp))
+            Box(Modifier.widthIn(max = 280.dp)) {
+                SegmentedControl(listOf("频道", "节目单"), if (guideMode) 1 else 0) { guideMode = it == 1 }
+            }
+            if (guideMode && EpgCache.configuredUrls.isEmpty()) {
+                Text("暂无节目单 · 在设置中添加 XMLTV 地址", color = AppleUi.Secondary,
+                    fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp).clickable(onClick = onOpenSettings))
+            } else if (guideMode && SourceStatuses.epg.isNotEmpty() &&
+                SourceStatuses.epg.all { it.health == SourceHealth.FAILED }) {
+                Text("节目单加载失败 · 查看源状态", color = MaterialTheme.colorScheme.error,
+                    fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp).clickable(onClick = onOpenSettings))
+            }
+            Spacer(modifier = Modifier.height(if (isWide) 14.dp else 8.dp))
 
             if (isWide) {
                 // ===== 电视/平板：左分组 + 右频道 两栏 =====
                 Row(modifier = Modifier.fillMaxSize()) {
                     LazyColumn(
                         modifier = Modifier
-                            .width(220.dp)
+                            .width(if (rememberWindowType() == WindowType.MEDIUM) 154.dp else 220.dp)
                             .fillMaxHeight()
                             .background(AppleUi.Chrome)
                             .padding(8.dp),
@@ -525,6 +551,7 @@ fun ChannelList(
                         selectedGroup = selectedGroup,
                         favorites = favorites,
                         epgRevision = epgRevision,
+                        guideMode = guideMode,
                         onChannelClick = onChannelClick,
                         onToggleFavorite = onToggleFavorite,
                         modifier = Modifier.weight(1f)
@@ -551,6 +578,7 @@ fun ChannelList(
                     selectedGroup = selectedGroup,
                     favorites = favorites,
                     epgRevision = epgRevision,
+                    guideMode = guideMode,
                     onChannelClick = onChannelClick,
                     onToggleFavorite = onToggleFavorite,
                     modifier = Modifier.weight(1f)
@@ -561,7 +589,7 @@ fun ChannelList(
 }
 
 internal fun usesTwoPaneChannelLayout(windowType: WindowType, heightDp: Int = Int.MAX_VALUE): Boolean =
-    windowType == WindowType.EXPANDED && heightDp >= 480
+    windowType != WindowType.COMPACT && heightDp >= 320
 
 @Composable
 private fun useWideChannelLayout(): Boolean = isTvDevice(LocalContext.current) ||
@@ -576,35 +604,35 @@ private fun TopBarButtons(
     onOpenSearch: () -> Unit,
     onRefresh: () -> Unit,
     onSpeedTest: () -> Unit,
+    onOpenSources: () -> Unit,
     onOpenSettings: () -> Unit
 ) {
-    val compact = !useWideChannelLayout()
+    var menuOpen by remember { mutableStateOf(false) }
     fun testLabel(): String {
         val progress = testProgress
         return if (isTesting && progress != null) "${progress.first}/${progress.second}"
         else if (isTesting) "测速中" else "测速"
     }
-    Row(modifier = Modifier.glassSurface().padding(2.dp), horizontalArrangement = Arrangement.spacedBy(0.dp)) {
-        ToolbarAction(UiIcons.Search, "搜索", onOpenSearch, showLabel = !compact, grouped = true)
-        ToolbarAction(UiIcons.Refresh, "刷新", onRefresh, showLabel = !compact, grouped = true)
-        if (!elderMode) {
-            ToolbarAction(
-                icon = if (isTesting) UiIcons.X else UiIcons.Gauge,
-                label = if (isTesting) "取消测速" else testLabel(),
-                onClick = onSpeedTest,
-                showLabel = !compact,
-                grouped = true,
-                accentColor = UiColors.Speed
-            )
+    Row(horizontalArrangement = Arrangement.spacedBy(4.dp), verticalAlignment = Alignment.CenterVertically) {
+        ToolbarAction(UiIcons.Search, "搜索", onOpenSearch, showLabel = true)
+        Box {
+            ToolbarAction(UiIcons.MoreHorizontal, "更多", { menuOpen = true }, showLabel = false)
+            DropdownMenu(expanded = menuOpen, onDismissRequest = { menuOpen = false }) {
+                DropdownMenuItem(text = { Text("刷新频道") }, leadingIcon = { Icon(UiIcons.Refresh, null) }, onClick = {
+                    menuOpen = false; onRefresh()
+                })
+                if (!elderMode) DropdownMenuItem(text = { Text(if (isTesting) "取消测速" else testLabel()) },
+                    leadingIcon = { Icon(if (isTesting) UiIcons.X else UiIcons.Gauge, null) }, onClick = {
+                        menuOpen = false; onSpeedTest()
+                    })
+                DropdownMenuItem(text = { Text("管理频道源") }, leadingIcon = { Icon(UiIcons.Pencil, null) }, onClick = {
+                    menuOpen = false; onOpenSources()
+                })
+                DropdownMenuItem(text = { Text("设置") }, leadingIcon = { Icon(UiIcons.Sliders, null) }, onClick = {
+                    menuOpen = false; onOpenSettings()
+                })
+            }
         }
-        ToolbarAction(
-            UiIcons.Sliders,
-            "设置",
-            onOpenSettings,
-            showLabel = !compact,
-            grouped = true,
-            accentColor = UiColors.Settings
-        )
     }
 }
 
@@ -614,6 +642,7 @@ private fun ChannelListContent(
     selectedGroup: ChannelGroup,
     favorites: Set<String>,
     epgRevision: Int,
+    guideMode: Boolean,
     onChannelClick: (Channel) -> Unit,
     onToggleFavorite: (Channel) -> Unit,
     modifier: Modifier = Modifier
@@ -645,7 +674,8 @@ private fun ChannelListContent(
                 val nowPlaying = remember(epgRevision, channel) { currentProgrammeTitle(channel) }
                 // 状态只依赖频道自身：测速后是新的 Channel 实例，不必随 EPG 刷新重算排序。
                 val status = remember(channel) { channelStatusText(channel) }
-                ChannelRow(
+                if (guideMode) GuideChannelRow(channel, epgRevision, onClick = { onChannelClick(channel) })
+                else ChannelRow(
                     channel = channel,
                     index = index + 1,
                     status = status,
@@ -776,5 +806,37 @@ fun ChannelRow(
         ToolbarAction(UiIcons.Heart, if (isFavorite) "取消收藏" else "收藏", onToggleFavorite,
             showLabel = false, grouped = true, active = isFavorite,
             accentColor = if (isFavorite) UiColors.Favorite else AppleUi.Secondary)
+    }
+}
+
+private val guideTimeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
+
+@Composable
+private fun GuideChannelRow(channel: Channel, epgRevision: Int, onClick: () -> Unit) {
+    val schedule = remember(channel.tvgIds, epgRevision) { EpgCache.schedule(channel.tvgIds) }
+    var focused by remember { mutableStateOf(false) }
+    fun time(programme: Programme): String = guideTimeFormat.format(programme.start.toInstant().atZone(ZoneId.systemDefault()))
+    Row(
+        modifier = Modifier.fillMaxWidth().heightIn(min = 84.dp)
+            .onFocusChanged { focused = it.isFocused }
+            .background(if (focused) UiColors.Info.copy(alpha = 0.06f) else Color.White)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 4.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        ChannelLogo(channel, size = 44.dp)
+        Spacer(Modifier.width(12.dp))
+        Column(Modifier.weight(1f)) {
+            Text(channel.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
+                maxLines = 1, overflow = TextOverflow.Ellipsis)
+            Text(schedule.current?.let { "正在播 ${time(it)}  ${it.title}" } ?: "暂无正在播出的节目",
+                color = if (schedule.current == null) AppleUi.Secondary else MaterialTheme.colorScheme.onSurface,
+                fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            schedule.next?.let {
+                Text("接下来 ${time(it)}  ${it.title}", color = AppleUi.Secondary,
+                    fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+        Icon(UiIcons.Play, contentDescription = "播放 ${channel.name}", tint = UiColors.Info, modifier = Modifier.size(20.dp))
     }
 }

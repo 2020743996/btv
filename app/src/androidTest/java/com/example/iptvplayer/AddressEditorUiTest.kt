@@ -31,6 +31,7 @@ class AddressEditorUiTest {
 
     @Before
     fun configureOrientation() {
+        SourceStatuses.channels = emptyList()
         val landscape = InstrumentationRegistry.getArguments().getString("orientation") == "landscape"
         compose.activityRule.scenario.onActivity {
             it.requestedOrientation = if (landscape) ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -58,16 +59,51 @@ class AddressEditorUiTest {
     }
 
     @Test
-    fun touchAddThenSave_deliversTheEnteredAddress() {
+    fun touchAdd_savesImmediately() {
         var saved: List<String>? = null
         compose.setContent { IptvPlayerTheme { AddressEditor(emptyList(), { saved = it }, {}) } }
         compose.onNodeWithText("添加").performTouchInput { click() }
         compose.onNode(hasSetTextAction()).performTextInput("https://example.com/live.m3u")
         captureScreen("address-form")
         compose.onNodeWithText("添加").assertIsDisplayed().performTouchInput { click() }
-        compose.onNodeWithText("1 个源 · 未保存").assertIsDisplayed()
-        compose.onNodeWithText("保存").performTouchInput { click() }
+        compose.onNodeWithText("1 个源").assertIsDisplayed()
+        compose.onNodeWithText("保存").assertDoesNotExist()
         compose.runOnIdle { assertEquals(listOf("https://example.com/live.m3u"), saved) }
+    }
+
+    @Test
+    fun editAndDelete_saveImmediately() {
+        val saved = mutableListOf<List<String>>()
+        compose.setContent {
+            IptvPlayerTheme {
+                AddressEditor(listOf("https://example.com/old.m3u"), { saved += it }, {})
+            }
+        }
+        compose.onNodeWithContentDescription("编辑").performClick()
+        compose.onNode(hasSetTextAction()).performTextReplacement("https://example.com/new.m3u")
+        compose.onNodeWithText("确定").performClick()
+        compose.runOnIdle { assertEquals(listOf("https://example.com/new.m3u"), saved.last()) }
+        compose.onNodeWithContentDescription("删除").performClick()
+        compose.onNodeWithText("删除频道源？").assertIsDisplayed()
+        compose.onNodeWithText("删除").performClick()
+        compose.runOnIdle { assertEquals(emptyList<String>(), saved.last()) }
+    }
+
+    @Test
+    fun failedSourceCanBeRetriedFromItsStatus() {
+        val url = "https://example.com/retry.m3u"
+        SourceStatuses.channels = listOf(SourceStatus(url, SourceHealth.FAILED, 0))
+        compose.setContent {
+            IptvPlayerTheme {
+                AddressEditor(listOf(url), {}, {}, onSourceLoad = {
+                    SourceStatus(it, SourceHealth.NORMAL, 1)
+                })
+            }
+        }
+        compose.onNodeWithText("加载失败 · 点此重试").performClick()
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNodeWithText("正常 · 1 个频道").assertIsDisplayed() }.isSuccess
+        }
     }
 
     @Test
@@ -89,7 +125,7 @@ class AddressEditorUiTest {
         compose.onNode(hasSetTextAction()).assertTextContains("https://example.com/large.m3u")
         captureScreen("keyboard-large-font")
         compose.onNodeWithText("添加").assertIsDisplayed().performTouchInput { click() }
-        compose.onNodeWithText("1 个源 · 未保存").assertIsDisplayed()
+        compose.onNodeWithText("1 个源").assertIsDisplayed()
     }
 
     @Test
@@ -105,7 +141,7 @@ class AddressEditorUiTest {
     }
 
     @Test
-    fun recreation_preservesDraftAndUnsavedList() {
+    fun recreation_preservesDraftAndSavedList() {
         val restoration = StateRestorationTester(compose)
         restoration.setContent { IptvPlayerTheme { AddressEditor(emptyList(), {}, {}) } }
         compose.onNodeWithText("添加").performClick()
@@ -114,8 +150,10 @@ class AddressEditorUiTest {
         compose.onNode(hasSetTextAction()).assertTextContains("https://example.com/list.m3u")
         compose.onNodeWithText("添加").performClick()
         restoration.emulateSavedInstanceStateRestore()
-        compose.onNodeWithText("1 个源 · 未保存").assertIsDisplayed()
-        compose.onNodeWithText("https://example.com/list.m3u").assertIsDisplayed()
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNodeWithText("1 个源").assertExists() }.isSuccess
+        }
+        compose.onNodeWithText("https://example.com/list.m3u").assertExists()
     }
 
     @Test
@@ -124,10 +162,16 @@ class AddressEditorUiTest {
         compose.onNodeWithText("添加").performClick()
         compose.onNode(hasSetTextAction()).performTextInput("https://example.com/list.m3u")
         compose.onNodeWithText("取消").performClick()
-        compose.onNodeWithText("放弃未保存的修改？").assertIsDisplayed()
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNodeWithText("放弃未保存的修改？").assertIsDisplayed() }.isSuccess
+        }
         compose.onNodeWithText("继续编辑").performClick()
         compose.onNode(hasSetTextAction()).assertTextContains("https://example.com/list.m3u")
         compose.onNodeWithText("取消").performClick()
+        captureScreen("discard-again")
+        compose.waitUntil(5_000) {
+            runCatching { compose.onNodeWithText("放弃修改").assertIsDisplayed() }.isSuccess
+        }
         compose.onNodeWithText("放弃修改").performClick()
         compose.waitUntil(5_000) {
             runCatching { compose.onNodeWithText("暂无频道源").assertIsDisplayed() }.isSuccess

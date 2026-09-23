@@ -27,11 +27,42 @@ private const val KEY_FAIL_COUNTS = "line_fail_counts"
 private const val KEY_ELDER_MODE = "elder_mode"
 private const val KEY_FONT_SIZE = "font_size"
 private const val KEY_RECENT = "recent_channels"
+private const val KEY_STARTUP_MODE = "startup_mode"
+private const val KEY_EPG_URL = "epg_url"
 private val failRecordLock = Any()
+
+enum class StartupMode(val label: String) {
+    DEVICE_DEFAULT("按设备"), PLAY_LAST("直接播放"), SHOW_LIST("频道列表");
+
+    companion object {
+        fun fromStored(value: String?): StartupMode = entries.firstOrNull { it.name == value } ?: DEVICE_DEFAULT
+    }
+}
 
 /** 统一入口，避免每个函数重复拼 `getSharedPreferences`。 */
 private fun prefs(context: Context): SharedPreferences =
     context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+fun getStartupMode(context: Context): StartupMode =
+    StartupMode.fromStored(prefs(context).getString(KEY_STARTUP_MODE, null))
+
+fun setStartupMode(context: Context, mode: StartupMode) {
+    prefs(context).edit().putString(KEY_STARTUP_MODE, mode.name).apply()
+}
+
+fun shouldAutoPlay(mode: StartupMode, isTv: Boolean): Boolean = when (mode) {
+    StartupMode.DEVICE_DEFAULT -> isTv
+    StartupMode.PLAY_LAST -> true
+    StartupMode.SHOW_LIST -> false
+}
+
+fun getEpgUrl(context: Context): String? = prefs(context).getString(KEY_EPG_URL, null)?.takeIf { it.isNotBlank() }
+
+fun setEpgUrl(context: Context, url: String?) {
+    prefs(context).edit().putString(KEY_EPG_URL, url?.trim()?.takeIf { it.isNotEmpty() }).apply()
+    EpgCache.configureSources(emptySet())
+    ChannelCache.invalidate()
+}
 
 fun getPictureMode(context: Context): PictureMode =
     PictureMode.fromStored(prefs(context).getString("picture_mode", null))

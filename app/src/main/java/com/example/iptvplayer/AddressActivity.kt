@@ -19,9 +19,10 @@ class AddressActivity : ComponentActivity() {
                     initialUrls = getM3uUrls(this),
                     onSave = { urls ->
                         saveM3uUrls(this, urls)
+                        SourceStatuses.channels = SourceStatuses.channels.filter { it.url in urls }
                         AppLog.log("保存源地址：${urls.size} 个")
-                        finish()
                     },
+                    onSourceLoad = { url -> loadChannelSource(this, url).status },
                     onBack = { finish() }
                 )
             }

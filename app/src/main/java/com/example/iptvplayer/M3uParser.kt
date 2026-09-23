@@ -74,8 +74,8 @@ fun parseM3u(text: String): List<Channel> {
 
                 // EPG 标识：优先取 tvg-id，没有就用 tvg-name（很多源只有 tvg-name）
                 val tvgIdMatch = TVG_ID_ATTRIBUTE.find(line)
-                pendingTvgId = tvgIdMatch?.groupValues?.get(1)
-                    ?: TVG_NAME_ATTRIBUTE.find(line)?.groupValues?.get(1)
+                pendingTvgId = tvgIdMatch?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+                    ?: TVG_NAME_ATTRIBUTE.find(line)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
                 pendingLogoUrl = TVG_LOGO_ATTRIBUTE.find(line)
                     ?.groupValues
                     ?.get(1)
@@ -220,22 +220,26 @@ object ChannelCache {
     private var loadedAtMillis: Long = 0L
 
     @Volatile
+    private var complete: Boolean = true
+
+    @Volatile
     var revision: Long = 0L
         private set
 
     @Synchronized
-    fun update(channels: List<Channel>, sources: List<String>) {
+    fun update(channels: List<Channel>, sources: List<String>, complete: Boolean = true) {
         revision++
         this.channels = channels
         sourceUrls = sources.toSet()
         loadedAtMillis = System.currentTimeMillis()
+        this.complete = complete
     }
 
     /** 返回仍在有效期内的缓存；源地址变化时不会误用旧数据。 */
     fun freshChannels(sources: List<String>): List<Channel>? {
         val age = System.currentTimeMillis() - loadedAtMillis
         return channels.takeIf {
-            it.isNotEmpty() && sourceUrls == sources.toSet() && age in 0..CACHE_TTL_MS
+            it.isNotEmpty() && sourceUrls == sources.toSet() && age in 0..(if (complete) CACHE_TTL_MS else 60_000L)
         }
     }
 

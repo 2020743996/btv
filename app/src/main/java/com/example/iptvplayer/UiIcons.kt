@@ -43,10 +43,12 @@ object UiIcons {
         "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"
     )
     val Play = lineIcon("Play", "M6 3l14 9-14 9z")
+    val List = lineIcon("List", "M8 6h13", "M8 12h13", "M8 18h13", "M3 6h.01", "M3 12h.01", "M3 18h.01")
     val ArrowLeft = lineIcon("ArrowLeft", "M19 12H5", "M12 19l-7-7 7-7")
     val ChevronLeft = lineIcon("ChevronLeft", "M15 18l-6-6 6-6")
     val ChevronRight = lineIcon("ChevronRight", "M9 18l6-6-6-6")
     val Plus = lineIcon("Plus", "M12 5v14", "M5 12h14")
+    val MoreHorizontal = lineIcon("MoreHorizontal", "M5 12h.01", "M12 12h.01", "M19 12h.01")
     val Trash = lineIcon(
         "Trash",
         "M3 6h18",
@@ -56,6 +58,8 @@ object UiIcons {
         "M14 11v5"
     )
     val Check = lineIcon("Check", "M20 6 9 17l-5-5")
+    val Download = lineIcon("Download", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M7 10l5 5 5-5", "M12 15V3")
+    val Upload = lineIcon("Upload", "M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4", "M17 8l-5-5-5 5", "M12 3v12")
     val X = lineIcon("X", "M18 6 6 18", "M6 6l12 12")
     val Pencil = lineIcon(
         "Pencil",

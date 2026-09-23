@@ -11,7 +11,7 @@ internal fun normalizedM3uUrl(value: String): String? {
 
 internal fun isSupportedM3uUrl(value: String): Boolean = normalizedM3uUrl(value) != null
 
-internal enum class AddressConfirmation { NONE, DISCARD_EDIT, LEAVE, DELETE }
+internal enum class AddressConfirmation { NONE, DISCARD_EDIT, DELETE }
 
 internal data class AddressEditorState(
     val savedUrls: List<String>,
@@ -45,7 +45,6 @@ internal data class AddressEditorState(
     fun requestBack(): AddressEditorState = when {
         editing && draftChanged -> copy(confirmation = AddressConfirmation.DISCARD_EDIT)
         editing -> closeEditor()
-        dirty -> copy(confirmation = AddressConfirmation.LEAVE)
         else -> this
     }
 

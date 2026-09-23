@@ -14,11 +14,19 @@ class ResponsiveUiTest {
     }
 
     @Test
-    fun phoneLandscape_keepsSingleColumnChannelList() {
+    fun phoneLandscape_usesTwoPaneWhenTallEnough() {
         assertFalse(usesTwoPaneChannelLayout(WindowType.COMPACT))
-        assertFalse(usesTwoPaneChannelLayout(WindowType.MEDIUM))
+        assertTrue(usesTwoPaneChannelLayout(WindowType.MEDIUM))
         assertTrue(usesTwoPaneChannelLayout(WindowType.EXPANDED))
-        assertFalse(usesTwoPaneChannelLayout(WindowType.EXPANDED, 411))
+        assertFalse(usesTwoPaneChannelLayout(WindowType.EXPANDED, 300))
         assertTrue(usesTwoPaneChannelLayout(WindowType.EXPANDED, 800))
+    }
+
+    @Test
+    fun startupDefaultDependsOnDevice() {
+        assertFalse(shouldAutoPlay(StartupMode.DEVICE_DEFAULT, isTv = false))
+        assertTrue(shouldAutoPlay(StartupMode.DEVICE_DEFAULT, isTv = true))
+        assertTrue(shouldAutoPlay(StartupMode.PLAY_LAST, isTv = false))
+        assertFalse(shouldAutoPlay(StartupMode.SHOW_LIST, isTv = true))
     }
 }

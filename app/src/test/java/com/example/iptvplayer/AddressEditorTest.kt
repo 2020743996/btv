@@ -29,12 +29,12 @@ class AddressEditorTest {
     }
 
     @Test
-    fun addEditDeleteAndBackPreserveTransactionBoundary() {
+    fun addEditDeleteAndBackPreserveDraftConfirmation() {
         val initial = AddressEditorState(emptyList())
         val added = initial.edit(0).changeDraft("https://example.com/one").submit()
         assertFalse(added.editing)
         assertTrue(added.dirty)
-        assertEquals(AddressConfirmation.LEAVE, added.requestBack().confirmation)
+        assertEquals(AddressConfirmation.NONE, added.requestBack().confirmation)
         val editing = added.edit(0).changeDraft("https://example.com/two")
         assertEquals(AddressConfirmation.DISCARD_EDIT, editing.requestBack().confirmation)
         assertEquals(added.urls, editing.closeEditor().urls)

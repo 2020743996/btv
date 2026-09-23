@@ -15,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.*
+import kotlinx.coroutines.launch
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
@@ -42,7 +43,12 @@ private val AddressStateSaver = listSaver<AddressEditorState, Any>(
 )
 
 @Composable
-fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onBack: () -> Unit) {
+internal fun AddressEditor(
+    initialUrls: List<String>,
+    onSave: (List<String>) -> Unit,
+    onBack: () -> Unit,
+    onSourceLoad: suspend (String) -> SourceStatus? = { null }
+) {
     var state by rememberSaveable(stateSaver = AddressStateSaver) {
         mutableStateOf(AddressEditorState(initialUrls))
     }
@@ -51,25 +57,51 @@ fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onB
     val keyboard = LocalSoftwareKeyboardController.current
     val compact = rememberWindowType() == WindowType.COMPACT
     val useTvKeyboard = isTvDevice(context) && !hasSystemIme(context)
+    val scope = rememberCoroutineScope()
+    var statusRevision by remember { mutableIntStateOf(0) }
+    var loadingUrls by remember { mutableStateOf<Set<String>>(emptySet()) }
+
+    fun load(url: String) {
+        if (url in loadingUrls) return
+        loadingUrls = loadingUrls + url
+        scope.launch {
+            try {
+                onSourceLoad(url)?.let { status ->
+                    if (url in state.urls) {
+                        SourceStatuses.channels = SourceStatuses.channels.filterNot { it.url == url } + status
+                        statusRevision++
+                    }
+                }
+            } finally {
+                loadingUrls = loadingUrls - url
+            }
+        }
+    }
 
     fun back() {
-        if (!state.editing && !state.dirty) onBack()
+        if (!state.editing) onBack()
         else {
             state = state.requestBack()
-            if (!state.editing) {
+            if (!state.editing || state.confirmation != AddressConfirmation.NONE) {
                 focus.clearFocus()
                 keyboard?.hide()
             }
         }
     }
     fun submit() {
-        state = state.submit()
-        if (!state.editing) {
+        val submitted = state.submit()
+        state = submitted
+        if (!submitted.editing) {
+            state = submitted.copy(savedUrls = submitted.urls)
+            if (submitted.urls != submitted.savedUrls) {
+                onSave(submitted.urls)
+                submitted.urls.firstOrNull { it !in submitted.savedUrls }?.let(::load)
+            }
             focus.clearFocus()
             keyboard?.hide()
         }
     }
-    BackHandler(enabled = state.editing || state.dirty) { back() }
+    BackHandler(enabled = state.editing) { back() }
 
     BoxWithConstraints(
         modifier = Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)
@@ -87,22 +119,40 @@ fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onB
             if (!state.editing) {
                 PageHeader(
                     title = "M3U 地址",
-                    subtitle = "${state.urls.size} 个源 · ${if (state.dirty) "未保存" else "已保存"}",
+                    subtitle = "${state.urls.size} 个源",
                     onBack = { back() }
                 )
                 Spacer(Modifier.height(12.dp))
+                val statuses = remember(statusRevision) { SourceStatuses.channels }
                 LazyColumn(modifier = Modifier.weight(1f).fillMaxWidth()) {
                     if (state.urls.isEmpty()) item {
                         Text("暂无频道源", color = MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     itemsIndexed(state.urls) { index, url ->
+                        val status = statuses.firstOrNull { it.url == url }
+                        val statusLabel = when {
+                            url in loadingUrls -> "正在加载…"
+                            status?.health == SourceHealth.NORMAL -> "正常 · ${status.itemCount} 个频道"
+                            status?.health == SourceHealth.STALE -> "使用上次数据 · 点此重试"
+                            status?.health == SourceHealth.FAILED -> "加载失败 · 点此重试"
+                            else -> "等待加载"
+                        }
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable { state = state.edit(index) }
                                 .padding(start = 4.dp, end = 0.dp, top = 12.dp, bottom = 12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(url, modifier = Modifier.weight(1f), fontSize = 15.sp,
-                                maxLines = 2, overflow = TextOverflow.Ellipsis)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(url, fontSize = 15.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                                Text(
+                                    statusLabel,
+                                    color = if (status?.health == SourceHealth.FAILED) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                    fontSize = 12.sp,
+                                    modifier = if (status?.health != SourceHealth.NORMAL && url !in loadingUrls)
+                                        Modifier.clickable { load(url) } else Modifier
+                                )
+                            }
                             Spacer(Modifier.width(8.dp))
                             TableActions(
                                 onEdit = { state = state.edit(index) },
@@ -114,9 +164,7 @@ fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onB
                 }
                 Spacer(Modifier.height(12.dp))
                 FormActions(
-                    primary = UiAction("保存", icon = UiIcons.Check, accentColor = UiColors.Info,
-                        onClick = { onSave(state.urls) }),
-                    secondary = UiAction("添加", icon = UiIcons.Plus, accentColor = UiColors.Info,
+                    primary = UiAction("添加", icon = UiIcons.Plus, accentColor = UiColors.Info,
                         onClick = { state = state.edit(state.urls.size) })
                 )
             } else {
@@ -176,7 +224,13 @@ fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onB
                 if (deleting) {
                     DialogFooter(
                         primary = UiAction("删除", icon = UiIcons.Trash, accentColor = UiColors.Delete,
-                            onClick = { state = state.confirmDelete() }),
+                            onClick = {
+                                val updated = state.confirmDelete()
+                                state = updated.copy(savedUrls = updated.urls)
+                                SourceStatuses.channels = SourceStatuses.channels.filter { it.url in updated.urls }
+                                statusRevision++
+                                onSave(updated.urls)
+                            }),
                         secondary = UiAction("取消", icon = UiIcons.X, accentColor = UiColors.Info,
                             onClick = { dismiss() })
                     )
@@ -186,12 +240,9 @@ fun AddressEditor(initialUrls: List<String>, onSave: (List<String>) -> Unit, onB
                             onClick = { dismiss() }),
                         destructive = UiAction("放弃修改", icon = UiIcons.Trash, accentColor = UiColors.Delete,
                             onClick = {
-                                if (state.confirmation == AddressConfirmation.LEAVE) onBack()
-                                else {
-                                    state = state.closeEditor()
-                                    focus.clearFocus()
-                                    keyboard?.hide()
-                                }
+                                state = state.closeEditor()
+                                focus.clearFocus()
+                                keyboard?.hide()
                             })
                     )
                 }

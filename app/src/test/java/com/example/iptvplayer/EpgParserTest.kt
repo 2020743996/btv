@@ -22,6 +22,17 @@ class EpgParserTest {
     }
 
     @Test
+    fun failedRefreshKeepsLastProgrammeData() {
+        val source = setOf("https://one.example/epg")
+        val programme = Programme("news", Date(0), Date(3_000), "保留的节目")
+        EpgCache.configureSources(source)
+        EpgCache.update(mapOf("news" to listOf(programme)), source)
+        EpgCache.markAttemptFailed(source)
+        assertEquals(programme, EpgCache.schedule(listOf("news"), Date(1_000)).current)
+        EpgCache.configureSources(emptySet())
+    }
+
+    @Test
     fun getProgrammeSchedule_returnsCurrentAndEarliestNextProgramme() {
         val now = Date(1_000_000)
         val current = Programme("news", Date(900_000), Date(1_100_000), "午间新闻")

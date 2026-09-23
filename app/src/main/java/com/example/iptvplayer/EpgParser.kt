@@ -1,5 +1,6 @@
 package com.example.iptvplayer
 
+import android.content.Context
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -192,6 +193,9 @@ object EpgCache {
     private var loadedAtMillis: Long = 0L
 
     @Volatile
+    private var complete: Boolean = true
+
+    @Volatile
     private var sourceUrls: Set<String> = emptySet()
 
     @Volatile
@@ -205,21 +209,37 @@ object EpgCache {
         sourceUrls = emptySet()
         programmesByChannel = emptyMap()
         loadedAtMillis = 0L
+        complete = true
+        SourceStatuses.epg = emptyList()
     }
 
     /** programmesByChannel 在后台线程构建好再整体传入，避免主线程做大的 groupBy。 */
     @Synchronized
-    fun update(programmesByChannel: Map<String, List<Programme>>, sourceUrls: Set<String>) {
+    fun update(programmesByChannel: Map<String, List<Programme>>, sourceUrls: Set<String>, complete: Boolean = true) {
         if (sourceUrls != configuredUrls) return
         this.programmesByChannel = programmesByChannel
         this.sourceUrls = sourceUrls
         loadedAtMillis = System.currentTimeMillis()
+        this.complete = complete
     }
 
     /** 是否已超过有效期需要重新下载（避免频繁进出播放页反复拉 8MB EPG）。 */
     fun needsRefresh(requestedSources: Set<String>): Boolean =
         requestedSources != sourceUrls ||
-            System.currentTimeMillis() - loadedAtMillis >= EPG_TTL_MS
+            System.currentTimeMillis() - loadedAtMillis >= (if (complete) EPG_TTL_MS else 60_000L)
+
+    @Synchronized
+    fun markAttemptFailed(requestedSources: Set<String>) {
+        if (requestedSources != configuredUrls) return
+        sourceUrls = requestedSources
+        loadedAtMillis = System.currentTimeMillis()
+        complete = false
+    }
+
+    @Synchronized
+    fun invalidate() {
+        loadedAtMillis = 0L
+    }
 
     /** 只扫描当前频道的节目，不再为列表中的每一行遍历整份 EPG。 */
     fun schedule(tvgIds: List<String>, now: Date = Date()): ProgrammeSchedule {
@@ -268,9 +288,10 @@ object EpgCache {
  */
 private val epgRefreshLock = Mutex()
 
-suspend fun refreshConfiguredEpg() = epgRefreshLock.withLock {
+suspend fun refreshConfiguredEpg(context: Context) = epgRefreshLock.withLock {
     val epgUrls = EpgCache.configuredUrls
     if (epgUrls.isEmpty() || !EpgCache.needsRefresh(epgUrls)) return@withLock
+    val snapshots = SourceSnapshots(context)
 
     val now = System.currentTimeMillis()
     val maxStart = now + 24 * 3600_000L
@@ -283,24 +304,45 @@ suspend fun refreshConfiguredEpg() = epgRefreshLock.withLock {
                 try {
                     limit.withPermit {
                         val text = downloadM3u(epgUrl)
-                        withContext(Dispatchers.Default) {
+                        val programmes = withContext(Dispatchers.Default) {
                             parseXmltv(text).filter { programme ->
                                 programme.start.time < maxStart && programme.end.time > minEnd
                             }
                         }
+                        try {
+                            snapshots.save("epg", epgUrl, text)
+                        } catch (e: CancellationException) {
+                            throw e
+                        } catch (_: Exception) {
+                            AppLog.log("节目单快照保存失败")
+                        }
+                        programmes to SourceStatus(epgUrl, SourceHealth.NORMAL, programmes.size)
                     }
                 } catch (e: CancellationException) {
                     throw e
                 } catch (e: Exception) {
-                    AppLog.log("EPG 加载失败：${e.message ?: e.javaClass.simpleName}")
-                    android.util.Log.w("IptvPlayer", "EPG 加载失败 $epgUrl", e)
-                    null
+                    val cached = snapshots.load("epg", epgUrl)
+                    val programmes = cached?.let { text ->
+                        withContext(Dispatchers.Default) {
+                            runCatching { parseXmltv(text).filter { it.start.time < maxStart && it.end.time > minEnd } }.getOrNull()
+                        }
+                    }
+                    if (programmes != null) {
+                        programmes to SourceStatus(epgUrl, SourceHealth.STALE, programmes.size, "连接失败，使用上次数据")
+                    } else {
+                        emptyList<Programme>() to SourceStatus(epgUrl, SourceHealth.FAILED, 0, "连接失败")
+                    }
                 }
             }
         }.awaitAll()
     }
-    if (perSource.all { it == null }) return@withLock
-    val collected = perSource.filterNotNull()
+    if (epgUrls != EpgCache.configuredUrls) return@withLock
+    SourceStatuses.epg = perSource.map { it.second }
+    val collected = perSource.filter { it.second.health != SourceHealth.FAILED }.map { it.first }
+    if (collected.isEmpty()) {
+        EpgCache.markAttemptFailed(epgUrls)
+        return@withLock
+    }
 
     val (byChannel, programmeCount) = withContext(Dispatchers.Default) {
         val merged = collected
@@ -316,9 +358,9 @@ suspend fun refreshConfiguredEpg() = epgRefreshLock.withLock {
             .sortedBy { it.start }
         merged.groupBy { normalizeEpgChannelId(it.channelId) } to merged.size
     }
-    EpgCache.update(byChannel, epgUrls)
+    EpgCache.update(byChannel, epgUrls, complete = perSource.all { it.second.health == SourceHealth.NORMAL })
     AppLog.log(
-        "EPG 加载成功：${perSource.count { it != null }}/${epgUrls.size} 个源，" +
+        "EPG 加载完成：${perSource.count { it.second.health == SourceHealth.NORMAL }}/${epgUrls.size} 个源正常，" +
             "$programmeCount 条节目"
     )
 }

@@ -69,6 +69,17 @@ class M3uParserTest {
     }
 
     @Test
+    fun parseM3u_usesTvgNameWhenIdIsBlank() {
+        val text = """
+            #EXTM3U
+            #EXTINF:-1 tvg-id="" tvg-name="Hunan TV",湖南卫视
+            http://example.com/hunan.ts
+        """.trimIndent()
+
+        assertEquals(listOf("Hunan TV"), parseM3u(text).single().tvgIds)
+    }
+
+    @Test
     fun mergeChannels_combinesEquivalentNamesAndRemovesDuplicateUrls() {
         val channels = listOf(
             Channel("CCTV-1 高清", "央视", listOf("https://a/live.m3u8"), tvgIds = listOf("cctv1")),

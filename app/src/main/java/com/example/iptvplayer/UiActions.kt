@@ -8,6 +8,7 @@ import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -142,40 +143,43 @@ fun ActionBar(
     }
     val ordered = orderActions(actions)
     val compact = rememberWindowType() == WindowType.COMPACT
-    if (stackOnCompact && compact) {
-        Column(
-            modifier = modifier.fillMaxWidth(),
-            horizontalAlignment = Alignment.End,
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            ordered.forEach { action ->
-                ActionButton(
-                    label = action.label,
-                    modifier = Modifier.widthIn(min = 168.dp),
-                    highlighted = action.role == ActionRole.PRIMARY,
-                    enabled = action.enabled,
-                    icon = action.icon,
-                    accentColor = action.accentColor,
-                    onClick = action.onClick
-                )
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val stack = stackOnCompact && (compact || maxWidth < 480.dp)
+        if (stack) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                ordered.forEach { action ->
+                    ActionButton(
+                        label = action.label,
+                        modifier = Modifier.widthIn(min = 168.dp),
+                        highlighted = action.role == ActionRole.PRIMARY,
+                        enabled = action.enabled,
+                        icon = action.icon,
+                        accentColor = action.accentColor,
+                        onClick = action.onClick
+                    )
+                }
             }
-        }
-    } else {
-        Row(
-            modifier = modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            ordered.forEach { action ->
-                ActionButton(
-                    label = action.label,
-                    modifier = if (compact) Modifier.weight(1f) else Modifier,
-                    highlighted = action.role == ActionRole.PRIMARY,
-                    enabled = action.enabled,
-                    icon = action.icon,
-                    accentColor = action.accentColor,
-                    onClick = action.onClick
-                )
+        } else {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                ordered.forEach { action ->
+                    ActionButton(
+                        label = action.label,
+                        modifier = if (compact) Modifier.weight(1f) else Modifier,
+                        highlighted = action.role == ActionRole.PRIMARY,
+                        enabled = action.enabled,
+                        icon = action.icon,
+                        accentColor = action.accentColor,
+                        onClick = action.onClick
+                    )
+                }
             }
         }
     }

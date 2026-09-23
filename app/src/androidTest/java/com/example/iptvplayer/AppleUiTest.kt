@@ -43,6 +43,7 @@ class AppleUiTest {
 
     @Test fun homeNavigationAndChannelActions() {
         var search = false
+        var openedSources = false
         var played = ""
         var favorite by mutableStateOf(false)
         compose.setContent {
@@ -52,25 +53,33 @@ class AppleUiTest {
                         if (favorite) setOf(channels[0].name) else emptySet(), emptyList(),
                         false, false, null, null, 0,
                         onChannelClick = { played = it.name }, onToggleFavorite = { favorite = !favorite },
-                        onSpeedTest = {}, onRefresh = {}, onOpenSearch = { search = true }, onOpenSettings = {})
+                        onSpeedTest = {}, onRefresh = {}, onOpenSearch = { search = true },
+                        onOpenSources = { openedSources = true }, onOpenSettings = {})
                 }
             }
         }
         compose.onNodeWithContentDescription("搜索").assertIsDisplayed().performTouchInput { click() }
         compose.runOnIdle { assertTrue(search) }
+        compose.onNodeWithContentDescription("更多").performClick()
+        compose.onNodeWithText("管理频道源").performClick()
+        compose.runOnIdle { assertTrue(openedSources) }
         compose.onNodeWithText(channels[0].name).performTouchInput { click() }
         compose.runOnIdle { assertEquals(channels[0].name, played) }
         compose.onAllNodesWithContentDescription("收藏")[0].performTouchInput { click() }
         compose.onNodeWithContentDescription("取消收藏").assertIsDisplayed()
+        compose.onNodeWithText("节目单").performClick()
+        compose.onAllNodesWithText("暂无正在播出的节目").onFirst().assertExists()
+        compose.onNodeWithText("频道").performClick()
         screenshot("home")
-        compose.onNodeWithText("卫视 2").performScrollTo().performClick()
+        if (landscape) compose.onNodeWithText("卫视").performClick()
+        else compose.onNodeWithText("卫视 2").performScrollTo().performClick()
         compose.onNodeWithText(channels[0].name).assertDoesNotExist()
         compose.onNodeWithText("湖南卫视").assertIsDisplayed()
     }
 
     @Test fun settingsLargeFontKeepsFormActions() {
         var closed = false
-        compose.setContent { IptvPlayerTheme { SettingsScreen({}, { closed = true }) } }
+        compose.setContent { IptvPlayerTheme { SettingsScreen({}, {}, { closed = true }) } }
         compose.onNodeWithText("特大").performScrollTo().performClick()
         compose.onNodeWithText("保存").assertIsDisplayed()
         compose.onNodeWithText("取消").assertIsDisplayed()
@@ -92,13 +101,39 @@ class AppleUiTest {
         compose.setContent {
             IptvPlayerTheme {
                 Box(Modifier.fillMaxSize().background(Color(0xFF202124))) {
-                    ChannelSelectOverlay(channels, 0, 0, 0) { selected = it }
+                    ChannelSelectOverlay(channels, 0, 0, 0, { selected = it }, {})
                 }
             }
         }
         screenshot("channel-panel")
         compose.onNodeWithText("湖南卫视").performScrollTo().performTouchInput { click() }
         compose.runOnIdle { assertEquals(2, selected) }
+    }
+
+    @Test fun touchAndSystemBackClosePlaybackChannelPanel() {
+        var panel by mutableStateOf(false)
+        compose.setContent {
+            IptvPlayerTheme {
+                PlayerScreen(
+                    player = null, playerState = PlayerUiState.PLAYING, errorMessage = null,
+                    channelName = channels[0].name, channelPosition = "1/4", channelTvgIds = emptyList(),
+                    channelLogoUrl = null, loadingMessage = "", linePosition = "线路 1/1",
+                    playbackQuality = null, channelInfoVisible = false, channels = channels,
+                    channelListVisible = panel, channelListSelection = 0, playingIndex = 0,
+                    onChannelSelected = {}, onOpenChannels = { panel = true },
+                    onCloseChannels = { panel = false }, onRetry = {}, onBack = {}
+                )
+            }
+        }
+        screenshot("playback-actions")
+        compose.onNodeWithText("频道").performClick()
+        screenshot("playback-panel")
+        compose.onNodeWithContentDescription("关闭频道列表").assertIsDisplayed().performClick()
+        compose.runOnIdle { assertTrue(!panel) }
+        compose.onNodeWithText("频道").performClick()
+        compose.onNodeWithContentDescription("关闭频道列表").assertIsDisplayed()
+        compose.activityRule.scenario.onActivity { it.onBackPressedDispatcher.onBackPressed() }
+        compose.runOnIdle { assertTrue(!panel) }
     }
 
     private fun screenshot(name: String) {

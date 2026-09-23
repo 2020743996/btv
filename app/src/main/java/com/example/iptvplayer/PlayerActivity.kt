@@ -9,6 +9,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -47,6 +48,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontFamily
@@ -257,10 +259,12 @@ class PlayerActivity : ComponentActivity() {
                     channelListSelection = channelListSelection,
                     playingIndex = channelIndex,
                     onChannelSelected = { index -> playChannelAt(index) },
+                    onOpenChannels = { openChannelList() },
+                    onCloseChannels = { channelListVisible = false },
                     onRetry = { startFromFirst() },
                     onBack = { finish() },
                     pictureMode = pictureMode,
-                    onOpenMenu = { menuVisible = true }
+                    onOpenMenu = { channelListVisible = false; menuVisible = true }
                 )
                 if (menuVisible) MenuContent()
             }
@@ -276,7 +280,7 @@ class PlayerActivity : ComponentActivity() {
         LaunchedEffect(Unit) {
             lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
                 while (true) {
-                    refreshConfiguredEpg()
+                    refreshConfiguredEpg(this@PlayerActivity)
                     epgTick++
                     delay(30_000L)
                 }
@@ -605,17 +609,27 @@ fun PlayerScreen(
     channelListSelection: Int,
     playingIndex: Int,
     onChannelSelected: (Int) -> Unit,
+    onOpenChannels: () -> Unit,
+    onCloseChannels: () -> Unit,
     onRetry: () -> Unit,
     onBack: () -> Unit,
     pictureMode: PictureMode = PictureMode.FIT,
     onOpenMenu: () -> Unit = {}
 ) {
+    BackHandler(enabled = channelListVisible) { onCloseChannels() }
+    val channelButtonFocus = remember { androidx.compose.ui.focus.FocusRequester() }
+    var hasOpenedChannels by remember { mutableStateOf(false) }
+    LaunchedEffect(channelListVisible) {
+        if (channelListVisible) hasOpenedChannels = true
+        else if (hasOpenedChannels) channelButtonFocus.requestFocus()
+    }
     var epgRefreshTick by remember { mutableIntStateOf(0) }
-    val lifecycle = (LocalContext.current as ComponentActivity).lifecycle
+    val context = LocalContext.current
+    val lifecycle = (context as ComponentActivity).lifecycle
     LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
             while (true) {
-                refreshConfiguredEpg()
+                refreshConfiguredEpg(context)
                 epgRefreshTick++
                 delay(60_000)
             }
@@ -731,7 +745,7 @@ fun PlayerScreen(
                 Column(
                     modifier = Modifier
                         .safeDrawingPadding()
-                        .padding(start = 16.dp, top = 16.dp, end = 76.dp, bottom = 16.dp)
+                        .padding(start = 16.dp, top = 72.dp, end = 16.dp, bottom = 16.dp)
                         .widthIn(max = 420.dp)
                         .fillMaxWidth()
                         .glassSurface(shape = AppleUi.Panel)
@@ -779,18 +793,25 @@ fun PlayerScreen(
             }
         }
 
-        ToolbarAction(UiIcons.Sliders, "播放选项", onOpenMenu,
+        Row(
             modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(16.dp),
-            showLabel = false)
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            ToolbarAction(UiIcons.Sliders, "播放选项", onOpenMenu, showLabel = true)
+            ToolbarAction(UiIcons.List, "频道", onOpenChannels,
+                modifier = Modifier.focusRequester(channelButtonFocus), showLabel = true)
+        }
 
         // 左侧悬浮频道列表：覆盖在画面上选台，不用返回列表页。
         if (channelListVisible) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.24f)).clickable { onCloseChannels() })
             ChannelSelectOverlay(
                 channels = channels,
                 selectedIndex = channelListSelection,
                 playingIndex = playingIndex,
                 epgRevision = epgRefreshTick,
-                onChannelSelected = onChannelSelected
+                onChannelSelected = onChannelSelected,
+                onClose = onCloseChannels
             )
         }
     }
@@ -807,7 +828,8 @@ fun ChannelSelectOverlay(
     selectedIndex: Int,
     playingIndex: Int,
     epgRevision: Int,
-    onChannelSelected: (Int) -> Unit
+    onChannelSelected: (Int) -> Unit,
+    onClose: () -> Unit
 ) {
     val listState = rememberLazyListState()
     // 选中项变化时滚动到可见位置（居中附近）。用无动画的 scrollToItem，
@@ -824,6 +846,7 @@ fun ChannelSelectOverlay(
     }
     Column(
         modifier = Modifier
+            .safeDrawingPadding()
             .padding(12.dp)
             .fillMaxHeight()
             .then(panelWidthModifier)
@@ -845,6 +868,7 @@ fun ChannelSelectOverlay(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 fontSize = 12.sp
             )
+            ToolbarAction(UiIcons.X, "关闭频道列表", onClose, showLabel = false)
         }
         Spacer(modifier = Modifier.height(6.dp))
         LazyColumn(
