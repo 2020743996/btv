@@ -660,6 +660,8 @@ fun PlayerScreen(
     onPlaybackActionsChanged: (Boolean) -> Unit = {}
 ) {
     BackHandler(enabled = channelListVisible) { onCloseChannels() }
+    val context = LocalContext.current
+    val isTv = isTvDevice(context)
     val channelButtonFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     var hasOpenedChannels by remember { mutableStateOf(false) }
     LaunchedEffect(channelListVisible) {
@@ -667,7 +669,7 @@ fun PlayerScreen(
         else if (hasOpenedChannels) {
             onPlaybackActionsChanged(true)
             androidx.compose.runtime.withFrameNanos { }
-            channelButtonFocus.requestFocus()
+            if (!isTv) channelButtonFocus.requestFocus()
         }
     }
     var epgRefreshTick by remember { mutableIntStateOf(0) }
@@ -677,7 +679,6 @@ fun PlayerScreen(
     LaunchedEffect(playerState) {
         if (playerState != PlayerUiState.PLAYING) playerControllerWasVisible = false
     }
-    val context = LocalContext.current
     val lifecycle = (context as ComponentActivity).lifecycle
     LaunchedEffect(lifecycle) {
         lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
@@ -862,8 +863,10 @@ fun PlayerScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 ToolbarAction(UiIcons.Sliders, "播放选项", onOpenMenu, showLabel = true)
-                ToolbarAction(UiIcons.List, "频道", onOpenChannels,
-                    modifier = Modifier.focusRequester(channelButtonFocus), showLabel = true)
+                if (!isTv) {
+                    ToolbarAction(UiIcons.List, "频道", onOpenChannels,
+                        modifier = Modifier.focusRequester(channelButtonFocus), showLabel = true)
+                }
             }
         }
 
