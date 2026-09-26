@@ -48,12 +48,12 @@ class TvFocusTest {
             IptvPlayerTheme {
                 ChannelList(channels.groupBy { it.group }, emptySet(), emptyList(), false, false,
                     null, null, 0, onChannelClick = { played = it.name }, onToggleFavorite = {},
-                    onSpeedTest = {}, onRefresh = {}, onOpenSearch = {}, onOpenSources = {}, onOpenSettings = {})
+                    onSpeedTest = {}, onRefresh = {}, onOpenSearch = {}, onOpenSettings = {})
             }
         }
         compose.runOnIdle { inputMode.requestInputMode(InputMode.Keyboard) }
-        compose.onNodeWithText("卫视").performSemanticsAction(SemanticsActions.RequestFocus)
-        compose.onNodeWithText("卫视").performKeyInput { pressKey(Key.DirectionCenter) }
+        compose.onNodeWithText("卫视 1").performSemanticsAction(SemanticsActions.RequestFocus)
+        compose.onNodeWithText("卫视 1").performKeyInput { pressKey(Key.DirectionCenter) }
         compose.onNodeWithText("湖南卫视").assertIsDisplayed()
         compose.onNodeWithText("湖南卫视").performSemanticsAction(SemanticsActions.RequestFocus)
         compose.onNodeWithText("湖南卫视").performKeyInput { pressKey(Key.DirectionCenter) }

@@ -1,5 +1,16 @@
 # Release Notes
 
+## v1.14.0 - 2026-09-26（GitHub 正式版）
+
+- 手机主导航收敛为底部“直播、节目单、设置”，电视与平板保留侧栏；收藏、最近观看和分组成为直播页筛选。
+- 直播首页增加真实节目单驱动的“继续观看”卡片；移除录制入口，不加入录像能力。
+- 集成 LiquidGlass 上游 `72ad05c` 的 Compose/Core 模块：API 33+ AGSL 折射、API 31–32 模糊、API 26–30 半透明回退；导航有独立内容安全区，玻璃不覆盖直播视频。
+- MT9653 作为 Android TV 性能验收基准；不做芯片型号拦截，Android API 并不提供跨厂商 SoC 性能等级。
+- versionCode 为 24，可覆盖安装 v1.13.0；最低系统仍为 Android 8.0（API 26）。
+- 验证：btv 与 LiquidGlass 共 85 项 JVM 测试通过；Android 15 phone35 运行 30 项仪器测试，其中 28 项通过、2 项电视专属用例跳过；Lint 通过。上游依赖 Android SDK 在线下载且校验失败的 Robolectric smoke 测试类已排除，说明见 `third_party/liquidglass/UPSTREAM.md`。
+- 正式 APK 构建通过；`apksigner` 验证 APK Signature Scheme v2 有效；SHA-256：`1e0842876163a22b26017aa7ca4b54f6fb7b02cc6d2360972472deff68f1a997`。
+- MT9653 实机帧率、实际视频并行渲染及 Android TV 遥控器验证仍待真机测试。
+
 ## v1.13.0 - 2026-09-26（GitHub 正式版）
 
 - 主导航扩展为直播、节目单、收藏、最近观看、频道源和设置；电视使用固定侧栏，手机使用可展开导航。

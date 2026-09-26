@@ -21,6 +21,13 @@ THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH RE
 - 内嵌位置：`app/src/main/java/com/github/promeg/pinyinhelper/`
 - 原库发布在已关闭的 jcenter，JitPack 构建不完整，故直接内嵌源码，未做修改
 
+### LiquidGlass
+- 来源：https://github.com/Abdullajon1881/LiquidGlass
+- 固定上游提交：`72ad05c49628ea2270116b2943629cd81c0cc496`
+- 用途：Compose 导航栏/侧栏的 AGSL 液态玻璃材质
+- 许可：Apache License 2.0，完整文本见 [`third_party/liquidglass/LICENSE`](third_party/liquidglass/LICENSE)
+- 上游模块代码保留原样；Gradle 模块脚本按 btv 插件和依赖配置做适配，详见 [`third_party/liquidglass/UPSTREAM.md`](third_party/liquidglass/UPSTREAM.md)
+
 ## 依赖库
 
 | 组件 | 用途 | 许可证 |

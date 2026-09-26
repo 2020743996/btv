@@ -43,7 +43,7 @@ class AppleUiTest {
 
     @Test fun homeNavigationAndChannelActions() {
         var search = false
-        var openedSources = false
+        var openedSettings = false
         var played = ""
         var favorite by mutableStateOf(false)
         compose.setContent {
@@ -54,29 +54,97 @@ class AppleUiTest {
                         false, false, null, null, 0,
                         onChannelClick = { played = it.name }, onToggleFavorite = { favorite = !favorite },
                         onSpeedTest = {}, onRefresh = {}, onOpenSearch = { search = true },
-                        onOpenSources = { openedSources = true }, onOpenSettings = {})
+                        onOpenSettings = { openedSettings = true })
                 }
             }
         }
         compose.onNodeWithContentDescription("搜索").assertIsDisplayed().performTouchInput { click() }
         compose.runOnIdle { assertTrue(search) }
         compose.onNodeWithContentDescription("更多").performClick()
-        compose.onNodeWithText("管理频道源").performClick()
-        compose.runOnIdle { assertTrue(openedSources) }
+        compose.onNodeWithText("刷新频道").assertIsDisplayed()
+        compose.onNodeWithText("管理频道源").assertDoesNotExist()
+        compose.onNodeWithContentDescription("更多").performClick()
         compose.onNodeWithText(channels[0].name).performTouchInput { click() }
         compose.runOnIdle { assertEquals(channels[0].name, played) }
         compose.onAllNodesWithContentDescription("收藏")[0].performTouchInput { click() }
         compose.onNodeWithContentDescription("取消收藏").assertIsDisplayed()
-        if (!landscape) compose.onNodeWithContentDescription("打开导航").performClick()
+        compose.onNodeWithText("收藏 1").performScrollTo().performClick()
+        compose.onNodeWithText(channels[0].name).assertIsDisplayed()
+        compose.onNodeWithText(channels[1].name).assertDoesNotExist()
         compose.onAllNodesWithText("节目单").onFirst().performClick()
         compose.onAllNodesWithText("暂无节目").onFirst().assertExists()
-        if (!landscape) compose.onNodeWithContentDescription("打开导航").performClick()
-        compose.onAllNodes(hasText("直播") and hasClickAction()).onFirst().performClick()
+        compose.onAllNodesWithText("设置").onFirst().performClick()
+        compose.runOnIdle { assertTrue(openedSettings) }
+        compose.onAllNodesWithText("直播").onFirst().performClick()
         screenshot("home")
-        if (landscape) compose.onNodeWithText("卫视").performClick()
+        if (landscape) compose.onNodeWithText("卫视 2").performClick()
         else compose.onNodeWithText("卫视 2").performScrollTo().performClick()
         compose.onNodeWithText(channels[0].name).assertDoesNotExist()
         compose.onNodeWithText("湖南卫视").assertIsDisplayed()
+    }
+
+    @Test fun recentChannelIsFeaturedWithoutRecordingActions() {
+        var played = ""
+        compose.setContent {
+            IptvPlayerTheme {
+                Box(Modifier.fillMaxSize().systemBarsPaddingCompat()) {
+                    ChannelList(channels.groupBy { it.group }, emptySet(), listOf(channels[2].name),
+                        false, false, null, null, 0,
+                        onChannelClick = { played = it.name }, onToggleFavorite = {}, onSpeedTest = {},
+                        onRefresh = {}, onOpenSearch = {}, onOpenSettings = {})
+                }
+            }
+        }
+        compose.onNodeWithText("继续观看").assertIsDisplayed()
+        compose.onNodeWithContentDescription("继续观看 ${channels[2].name}").performClick()
+        compose.runOnIdle { assertEquals(channels[2].name, played) }
+        compose.onNodeWithText("录制").assertDoesNotExist()
+    }
+
+    @Test fun staleRecentHistoryDoesNotCreateContinueCard() {
+        compose.setContent {
+            IptvPlayerTheme {
+                Box(Modifier.fillMaxSize().systemBarsPaddingCompat()) {
+                    ChannelList(channels.groupBy { it.group }, emptySet(), listOf("已删除的频道"),
+                        false, false, null, null, 0, onChannelClick = {}, onToggleFavorite = {},
+                        onSpeedTest = {}, onRefresh = {}, onOpenSearch = {}, onOpenSettings = {})
+                }
+            }
+        }
+        compose.onNodeWithText("继续观看").assertDoesNotExist()
+        compose.onNodeWithText("最近 0").performScrollTo().performClick()
+        compose.onNodeWithText("暂无最近观看频道").assertIsDisplayed()
+    }
+
+    @Test fun longRecentChannelKeepsContinueActionVisible() {
+        val longName = "非常长的频道名称用于验证窄屏卡片不会遮挡播放操作"
+        val channel = Channel(longName, "测试分组", listOf("https://example.com/long"))
+        compose.setContent {
+            IptvPlayerTheme {
+                Box(Modifier.fillMaxSize().systemBarsPaddingCompat()) {
+                    ChannelList(mapOf(channel.group to listOf(channel)), emptySet(), listOf(longName),
+                        false, false, null, null, 0, onChannelClick = {}, onToggleFavorite = {},
+                        onSpeedTest = {}, onRefresh = {}, onOpenSearch = {}, onOpenSettings = {})
+                }
+            }
+        }
+        compose.onNodeWithContentDescription("继续观看 $longName").assertIsDisplayed()
+        compose.onNodeWithText("播放").assertIsDisplayed()
+    }
+
+    @Test fun recentCardIsHiddenWithoutHistory() {
+        compose.setContent {
+            IptvPlayerTheme {
+                Box(Modifier.fillMaxSize().systemBarsPaddingCompat()) {
+                    ChannelList(channels.groupBy { it.group }, emptySet(), emptyList(), false, false,
+                        null, null, 0, onChannelClick = {}, onToggleFavorite = {}, onSpeedTest = {},
+                        onRefresh = {}, onOpenSearch = {}, onOpenSettings = {})
+                }
+            }
+        }
+        compose.onNodeWithText("继续观看").assertDoesNotExist()
+        compose.onNodeWithText("全部频道").assertIsDisplayed()
+        compose.onNodeWithText("最近 0").assertIsDisplayed()
     }
 
     @Test fun settingsLargeFontKeepsFormActions() {

@@ -20,3 +20,8 @@ dependencyResolutionManagement {
 
 rootProject.name = "IptvPlayer"
 include(":app")
+include(":liquidglass-core")
+include(":liquidglass-compose")
+
+project(":liquidglass-core").projectDir = file("third_party/liquidglass/liquidglass-core")
+project(":liquidglass-compose").projectDir = file("third_party/liquidglass/liquidglass-compose")
