@@ -133,8 +133,8 @@ fun SettingsScreen(onOpenSources: () -> Unit, onOpenAdmin: () -> Unit, onBack: (
                 .fillMaxSize()
                 .background(MaterialTheme.colorScheme.background).systemBarsPaddingCompat()
                 .padding(
-                    horizontal = if (compact) 16.dp else 32.dp,
-                    vertical = if (compact) 16.dp else 24.dp
+                    horizontal = if (compact) UiSpace.PageCompact else UiSpace.PageRegular,
+                    vertical = if (compact) UiSpace.PageCompact else UiSpace.PageRegular
                 )
         ) {
             PageHeader(title = "设置", onBack = onBack)
@@ -194,7 +194,7 @@ fun SettingsScreen(onOpenSources: () -> Unit, onOpenAdmin: () -> Unit, onBack: (
 
                 Spacer(modifier = Modifier.height(24.dp))
                 SectionLabel("频道源与节目单")
-                NavigationRow("管理频道源", UiIcons.Pencil, onOpenSources)
+                NavigationRow("管理频道源", UiIcons.List, onOpenSources)
                 ListSeparator(inset = 48.dp)
                 OutlinedTextField(
                     value = epgUrl,

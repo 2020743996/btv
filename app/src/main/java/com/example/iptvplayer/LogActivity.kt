@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -46,8 +47,8 @@ fun LogScreen(onBack: () -> Unit) {
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background).systemBarsPaddingCompat()
             .padding(
-                horizontal = if (compact) 16.dp else 24.dp,
-                vertical = if (compact) 14.dp else 20.dp
+                horizontal = if (compact) UiSpace.PageCompact else UiSpace.PageRegular,
+                vertical = if (compact) UiSpace.PageCompact else UiSpace.PageRegular
             )
     ) {
         PageHeader(
@@ -66,8 +67,9 @@ fun LogScreen(onBack: () -> Unit) {
                         text = line,
                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
                         fontSize = 13.sp,
-                        modifier = Modifier.padding(vertical = 2.dp)
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 7.dp)
                     )
+                    ListSeparator()
                 }
             }
         }

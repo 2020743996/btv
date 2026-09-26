@@ -2,7 +2,9 @@ package com.example.iptvplayer
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
@@ -22,6 +24,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.focus.onFocusChanged
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -130,6 +134,7 @@ internal fun AddressEditor(
                     }
                     itemsIndexed(state.urls) { index, url ->
                         val status = statuses.firstOrNull { it.url == url }
+                        var focused by remember(url, index) { mutableStateOf(false) }
                         val statusLabel = when {
                             url in loadingUrls -> "正在加载…"
                             status?.health == SourceHealth.NORMAL -> "正常 · ${status.itemCount} 个频道"
@@ -138,8 +143,14 @@ internal fun AddressEditor(
                             else -> "等待加载"
                         }
                         Row(
-                            modifier = Modifier.fillMaxWidth().clickable { state = state.edit(index) }
-                                .padding(start = 4.dp, end = 0.dp, top = 12.dp, bottom = 12.dp),
+                            modifier = Modifier.fillMaxWidth().heightIn(min = 68.dp)
+                                .onFocusChanged { focused = it.isFocused }
+                                .clip(AppleUi.Control)
+                                .background(if (focused) UiColors.Info.copy(alpha = 0.045f) else Color.Transparent)
+                                .border(if (focused) 2.dp else 0.dp,
+                                    if (focused) UiColors.Info else Color.Transparent, AppleUi.Control)
+                                .clickable { state = state.edit(index) }
+                                .padding(start = 8.dp, end = 4.dp, top = 10.dp, bottom = 10.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
@@ -159,7 +170,7 @@ internal fun AddressEditor(
                                 onDelete = { state = state.copy(confirmation = AddressConfirmation.DELETE, deleteIndex = index) }
                             )
                         }
-                        ListSeparator()
+                        ListSeparator(inset = 8.dp)
                     }
                 }
                 Spacer(Modifier.height(12.dp))

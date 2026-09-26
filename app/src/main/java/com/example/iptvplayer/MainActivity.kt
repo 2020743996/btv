@@ -22,8 +22,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -51,6 +49,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -538,7 +537,7 @@ fun ChannelList(
                     modifier = Modifier.weight(1f).fillMaxHeight()
                         .padding(bottom = if (useSidebarNavigation) 0.dp else 68.dp)
                         .padding(
-                            horizontal = if (useSidebarNavigation || isWide) 24.dp else 14.dp,
+                            horizontal = if (useSidebarNavigation || isWide) UiSpace.PageRegular else UiSpace.PageCompact,
                             vertical = if (isWide) 20.dp else 8.dp
                         )
                 ) {
@@ -701,10 +700,15 @@ private fun HomeBottomNavigation(
         Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
             listOf(MainSection.LIVE, MainSection.GUIDE, MainSection.SETTINGS).forEach { section ->
                 val active = selected == section
+                var focused by remember { mutableStateOf(false) }
                 Column(
                     Modifier.weight(1f).fillMaxHeight().padding(horizontal = 4.dp, vertical = 3.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (active) UiColors.Info.copy(alpha = 0.08f) else Color.Transparent)
+                        .onFocusChanged { focused = it.isFocused }
+                        .clip(AppleUi.Control)
+                        .background(if (active) UiColors.Info.copy(alpha = 0.08f)
+                            else if (focused) UiColors.Info.copy(alpha = 0.04f) else Color.Transparent)
+                        .border(if (focused) 2.dp else 0.dp,
+                            if (focused) UiColors.Info else Color.Transparent, AppleUi.Control)
                         .clickable { onSelect(section) },
                     horizontalAlignment = Alignment.CenterHorizontally,
                     verticalArrangement = Arrangement.Center
@@ -868,18 +872,13 @@ private fun GuideScheduleContent(
     onChannelClick: (Channel) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val isWide = useWideChannelLayout()
-    val glassTransparency = getGlassTransparency(LocalContext.current) / 100f
     val zone = remember { ZoneId.systemDefault() }
     val start = remember(selectedDate, zone) { selectedDate.atStartOfDay(zone).toInstant().toEpochMilli() }
     val end = remember(selectedDate, zone) { selectedDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() }
-    val timelineScroll = rememberScrollState()
     var selectedProgramme by remember { mutableStateOf<Programme?>(null) }
     val now = System.currentTimeMillis()
-    val hourWidth = 96.dp
-    val dayMinutes = ((end - start) / 60_000L).toInt().coerceAtLeast(1)
-    val currentMinute = ((now - start) / 60_000L).toInt().coerceIn(0, dayMinutes - 1)
     val dateFormatter = remember { DateTimeFormatter.ofPattern("M月d日") }
+    var expandedChannelName by rememberSaveable(selectedDate.toString()) { mutableStateOf<String?>(null) }
 
     LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 10.dp)) {
         items(7) { offset ->
@@ -889,92 +888,81 @@ private fun GuideScheduleContent(
             }
         }
     }
-    if (isWide) {
-        Row(Modifier.fillMaxWidth().padding(start = 176.dp).horizontalScroll(timelineScroll)) {
-            repeat((dayMinutes + 59) / 60) { hour ->
-                Box(Modifier.width(hourWidth).height(24.dp)) {
-                    Text("%02d:00".format(hour), color = AppleUi.Secondary, fontSize = 12.sp)
-                    if (selectedDate == LocalDate.now(zone) && currentMinute / 60 == hour) {
-                        Box(Modifier.align(Alignment.TopStart)
-                            .padding(start = hourWidth * ((currentMinute % 60) / 60f))
-                            .width(2.dp).height(24.dp).background(UiColors.Live))
-                    }
-                }
-            }
-        }
-    }
     LazyColumn(modifier = modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 20.dp)) {
         items(channels, key = { it.name }) { channel ->
             val programmes = remember(channel.tvgIds, selectedDate, epgRevision) {
                 EpgCache.guide(channel.tvgIds, Date(start), Date(end))
             }
-            if (isWide) {
-                Row(Modifier.fillMaxWidth().heightIn(min = 74.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Row(Modifier.width(176.dp).padding(end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        ChannelLogo(channel, size = 40.dp)
-                        Text(channel.name, Modifier.weight(1f).padding(start = 10.dp), maxLines = 2,
-                            overflow = TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.Medium)
-                    }
-                    Row(Modifier.horizontalScroll(timelineScroll).heightIn(min = 58.dp), verticalAlignment = Alignment.CenterVertically) {
-                        var cursor = 0L
-                        if (programmes.isEmpty()) Text("暂无节目", Modifier.width(hourWidth), color = AppleUi.Secondary, fontSize = 12.sp)
-                        programmes.forEach { programme ->
-                            val programmeStart = programme.start.time.coerceIn(start, end)
-                            val programmeEnd = programme.end.time.coerceIn(start, end)
-                            val startMinute = ((programmeStart - start) / 60_000L).coerceIn(0, dayMinutes.toLong())
-                            val endMinute = ((programmeEnd - start) / 60_000L).coerceIn(startMinute, dayMinutes.toLong())
-                            val gapMinutes = (startMinute - cursor).coerceAtLeast(0)
-                            if (gapMinutes > 0) Spacer(Modifier.width(hourWidth * (gapMinutes / 60f)))
-                            val width = (hourWidth * ((endMinute - startMinute) / 60f)).coerceAtLeast(40.dp)
-                            val active = now >= programme.start.time && now < programme.end.time
-                            Column(
-                                Modifier.width(width).height(52.dp).padding(end = 4.dp)
-                                    .clip(AppleUi.Control)
-                                    .background(if (active) UiColors.Live.copy(alpha = 0.08f)
-                                        else Color.White.copy(alpha = 1f - glassTransparency))
-                                    .border(1.dp, Color.White.copy(alpha = 0.8f), AppleUi.Control)
-                                    .clickable { if (active) onChannelClick(channel) else selectedProgramme = programme }
-                                    .padding(horizontal = 8.dp, vertical = 5.dp),
-                                verticalArrangement = Arrangement.Center
-                            ) {
-                                Text(programme.title, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                Text(guideTimeFormat.format(programme.start.toInstant().atZone(zone)),
-                                    fontSize = 10.sp, color = AppleUi.Secondary)
+            val activeIndex = programmes.indexOfFirst { now >= it.start.time && now < it.end.time }
+            val preview = when {
+                activeIndex >= 0 -> programmes.drop(activeIndex).take(2)
+                else -> programmes.filter { it.end.time > now }.take(2)
+            }
+            val expanded = expandedChannelName == channel.name
+            Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Row(
+                        Modifier.weight(1f).clip(AppleUi.Control)
+                            .background(if (expanded) UiColors.Info.copy(alpha = 0.05f) else Color.Transparent)
+                            .clickable {
+                                expandedChannelName = if (expanded) null else channel.name
                             }
-                            cursor = endMinute.toLong()
+                            .padding(horizontal = 8.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        ChannelLogo(channel, size = 42.dp)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                            Text(channel.name, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            if (preview.isEmpty()) {
+                                Text("暂无节目单", color = AppleUi.Secondary, fontSize = 12.sp,
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            } else {
+                                preview.forEachIndexed { index, programme ->
+                                    val active = now >= programme.start.time && now < programme.end.time
+                                    val label = when {
+                                        active -> "正在播"
+                                        index == 0 && activeIndex < 0 -> "即将播出"
+                                        else -> "接下来"
+                                    }
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Text(label, color = if (active) UiColors.Live else AppleUi.Secondary,
+                                            fontSize = 11.sp, maxLines = 1)
+                                        Text(guideTimeFormat.format(programme.start.toInstant().atZone(zone)),
+                                            Modifier.padding(start = 5.dp), color = AppleUi.Secondary, fontSize = 11.sp)
+                                        Text(programme.title, Modifier.weight(1f).padding(start = 7.dp),
+                                            maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp)
+                                    }
+                                }
+                            }
                         }
-                        val remainingMinutes = (dayMinutes.toLong() - cursor).coerceAtLeast(0)
-                        if (remainingMinutes > 0) Spacer(Modifier.width(hourWidth * (remainingMinutes / 60f)))
+                        Icon(UiIcons.ChevronRight,
+                            contentDescription = if (expanded) "收起 ${channel.name} 节目单" else "展开 ${channel.name} 节目单",
+                            modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = if (expanded) 90f else 0f },
+                            tint = if (expanded) UiColors.Info else AppleUi.Secondary)
                     }
+                    ToolbarAction(UiIcons.Play, "播放 ${channel.name}", { onChannelClick(channel) }, showLabel = false)
                 }
-            } else {
-                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        ChannelLogo(channel, size = 40.dp)
-                        Text(channel.name, Modifier.weight(1f).padding(start = 10.dp), maxLines = 1,
-                            overflow = TextOverflow.Ellipsis, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-                        ToolbarAction(UiIcons.Play, "播放 ${channel.name}", { onChannelClick(channel) }, showLabel = false)
-                    }
+                if (expanded) {
                     if (programmes.isEmpty()) {
-                        Text("暂无节目", Modifier.padding(start = 50.dp, top = 7.dp), color = AppleUi.Secondary, fontSize = 13.sp)
+                        Text("所选日期暂无节目", Modifier.padding(start = 62.dp, top = 8.dp, bottom = 8.dp),
+                            color = AppleUi.Secondary, fontSize = 13.sp)
                     } else {
                         programmes.forEach { programme ->
                             val active = now >= programme.start.time && now < programme.end.time
-                            Row(Modifier.fillMaxWidth().padding(start = 50.dp, top = 6.dp)
-                                .clip(MaterialTheme.shapes.small)
-                                .background(if (active) UiColors.Live.copy(alpha = 0.08f) else Color.Transparent)
-                                .clickable { if (active) onChannelClick(channel) else selectedProgramme = programme }
-                                .padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Text(guideTimeFormat.format(programme.start.toInstant().atZone(zone)),
-                                    Modifier.width(52.dp), color = if (active) UiColors.Live else AppleUi.Secondary, fontSize = 12.sp)
-                                Text(programme.title, Modifier.weight(1f).padding(start = 8.dp), maxLines = 2,
-                                    overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
-                                if (active) Text("正在播", color = UiColors.Live, fontSize = 11.sp)
-                            }
+                            GuideProgrammeRow(
+                                programme = programme,
+                                active = active,
+                                zone = zone,
+                                onClick = {
+                                    if (active) onChannelClick(channel) else selectedProgramme = programme
+                                }
+                            )
                         }
                     }
                 }
-                ListSeparator(inset = 50.dp)
+                ListSeparator(inset = 62.dp)
             }
         }
     }
@@ -992,12 +980,38 @@ private fun GuideScheduleContent(
 }
 
 @Composable
+private fun GuideProgrammeRow(
+    programme: Programme,
+    active: Boolean,
+    zone: ZoneId,
+    onClick: () -> Unit
+) {
+    val startTime = guideTimeFormat.format(programme.start.toInstant().atZone(zone))
+    val endTime = guideTimeFormat.format(programme.end.toInstant().atZone(zone))
+    Row(
+        Modifier.fillMaxWidth().padding(start = 62.dp, top = 3.dp)
+            .clip(MaterialTheme.shapes.small)
+            .background(if (active) UiColors.Live.copy(alpha = 0.08f) else Color.Transparent)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 8.dp, vertical = 8.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text("$startTime–$endTime", Modifier.width(92.dp),
+            color = if (active) UiColors.Live else AppleUi.Secondary, fontSize = 12.sp)
+        Text(programme.title, Modifier.weight(1f).padding(start = 8.dp), maxLines = 2,
+            overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
+        if (active) Text("正在播", Modifier.padding(start = 8.dp), color = UiColors.Live,
+            fontSize = 11.sp, maxLines = 1)
+    }
+}
+
+@Composable
 private fun GuideDateChip(label: String, selected: Boolean, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     val transparency = getGlassTransparency(LocalContext.current) / 100f
-    Text(label, Modifier.height(38.dp).onFocusChanged { focused = it.isFocused }
-        .glassSurface(focused = focused, tinted = selected, transparency = transparency)
-        .border(if (focused) 2.dp else 1.dp, if (focused) UiColors.Info else AppleUi.Separator, AppleUi.Control)
+    Text(label, Modifier.height(44.dp).onFocusChanged { focused = it.isFocused }
+        .glassSurface(shape = AppleUi.Chip, focused = focused, tinted = selected, transparency = transparency)
+        .border(if (focused) 2.dp else 1.dp, if (focused) UiColors.Info else AppleUi.Separator, AppleUi.Chip)
         .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 9.dp),
         color = if (selected) UiColors.Info else MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
 }
@@ -1008,19 +1022,19 @@ private fun GroupChip(name: String, count: Int, selected: Boolean, onClick: () -
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
-            .height(if (compact) 44.dp else 40.dp)
+            .height(44.dp)
             .onFocusChanged { focused = it.isFocused }
-            .clip(AppleUi.Control)
+            .clip(AppleUi.Chip)
             .border(
                 if (focused) 2.dp else 1.dp,
                 if (focused) UiColors.Info else Color.Transparent,
-                AppleUi.Control
+                AppleUi.Chip
             )
             .clickable(onClick = onClick)
             .background(
                 if (selected) SolidColor(Color.White)
                 else SolidColor(Color.Transparent),
-                AppleUi.Control
+                AppleUi.Chip
             )
             .padding(horizontal = if (compact) 18.dp else 14.dp),
         contentAlignment = Alignment.Center
@@ -1050,10 +1064,10 @@ fun ChannelRow(
     Row(
         Modifier.fillMaxWidth().heightIn(min = 76.dp)
             .onFocusChanged { focused = it.isFocused }
-            .clip(MaterialTheme.shapes.medium)
+            .clip(AppleUi.Control)
             .background(if (focused) UiColors.Info.copy(alpha = 0.06f) else Color.White)
             .border(if (focused) 2.dp else 0.dp,
-                if (focused) UiColors.Info else Color.Transparent, MaterialTheme.shapes.medium)
+                if (focused) UiColors.Info else Color.Transparent, AppleUi.Control)
             .clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

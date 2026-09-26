@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
+import androidx.compose.ui.draw.clip
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
@@ -216,8 +217,11 @@ internal fun PlaybackOptionRow(choice: PlaybackChoice, navigation: Boolean = fal
     var focused by remember { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().heightIn(min = 56.dp)
         .onFocusChanged { focused = it.isFocused }
-        .background(if (focused) UiColors.Accent.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface)
-        .border(if (focused) 2.dp else 0.dp, if (focused) UiColors.Accent else androidx.compose.ui.graphics.Color.Transparent)
+        .clip(AppleUi.Control)
+        .background(if (focused) UiColors.Accent.copy(alpha = 0.08f)
+            else if (choice.selected) AppleUi.SubtleBlue else MaterialTheme.colorScheme.surface)
+        .border(if (focused) 2.dp else 0.dp,
+            if (focused) UiColors.Accent else androidx.compose.ui.graphics.Color.Transparent, AppleUi.Control)
         .selectable(choice.selected, enabled = choice.enabled, role = if (navigation) Role.Button else Role.RadioButton, onClick = onClick)
         .padding(horizontal = 16.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f)) {

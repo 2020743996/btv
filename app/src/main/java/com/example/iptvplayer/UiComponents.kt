@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -201,8 +202,9 @@ fun ToolbarAction(
     Row(
         modifier = modifier
             .height(44.dp)
+            .widthIn(min = 44.dp)
             .onFocusChanged { focused = it.isFocused }
-            .then(if (!grouped) Modifier.glassSurface(
+            .then(if (!grouped) Modifier.glassSurface(shape = AppleUi.Control,
                 focused = focused,
                 tinted = active,
                 transparency = getGlassTransparency(context) / 100f

@@ -6,6 +6,7 @@ import androidx.activity.compose.setContent
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -40,7 +41,6 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
@@ -122,8 +122,8 @@ fun SearchScreen(
     }
 
     // ===== 手机：上下布局（输入框在上，结果在下）；电视/平板：左右布局 =====
-    val horizontalPadding = if (compact) 16.dp else 28.dp
-    val verticalPadding = if (compact) 14.dp else 22.dp
+    val horizontalPadding = if (compact) UiSpace.PageCompact else UiSpace.PageRegular
+    val verticalPadding = if (compact) UiSpace.PageCompact else UiSpace.PageRegular
 
     if (compact) {
         Column(
@@ -252,7 +252,8 @@ private fun SearchInputBox(query: String) {
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 54.dp)
-            .background(MaterialTheme.colorScheme.surfaceVariant, MaterialTheme.shapes.medium)
+            .clip(AppleUi.Field)
+            .background(AppleUi.Chrome, AppleUi.Field)
             .padding(horizontal = 16.dp, vertical = 13.dp)
     )
 }
@@ -277,9 +278,9 @@ private fun HistoryChip(word: String, onClick: () -> Unit) {
     var focused by remember { mutableStateOf(false) }
     Box(
         modifier = Modifier
-            .height(36.dp)
+            .heightIn(min = 44.dp)
             .onFocusChanged { focused = it.isFocused }
-            .glassSurface(focused = focused)
+            .glassSurface(shape = AppleUi.Chip, focused = focused)
             .clickable(onClick = onClick)
             .padding(horizontal = 14.dp),
         contentAlignment = Alignment.Center
@@ -324,16 +325,15 @@ private fun SearchResults(
                         .fillMaxWidth()
                         .heightIn(min = 58.dp)
                         .onFocusChanged { focused = it.isFocused }
+                        .clip(AppleUi.Control)
                         .border(
                             if (focused) 2.dp else 1.dp,
-                            if (focused) UiColors.Search else Color.Transparent,
-                            MaterialTheme.shapes.small
+                            if (focused) UiColors.Search else AppleUi.Separator,
+                            AppleUi.Control
                         )
                         .clickable { onPlay(channel) }
-                        .background(
-                            SolidColor(MaterialTheme.colorScheme.surface),
-                            MaterialTheme.shapes.small
-                        )
+                        .background(if (focused) UiColors.Search.copy(alpha = 0.05f)
+                            else MaterialTheme.colorScheme.surface, AppleUi.Control)
                         .padding(horizontal = 4.dp, vertical = 12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {

@@ -26,12 +26,25 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 internal object AppleUi {
-    val Control = RoundedCornerShape(50)
-    val Panel = RoundedCornerShape(24.dp)
-    val Field = RoundedCornerShape(16.dp)
-    val Separator = Color(0xFFE5E5EA)
-    val Secondary = Color(0xFF63636B)
-    val Chrome = Color(0xFFF2F2F7)
+    val Control = RoundedCornerShape(12.dp)
+    val CompactControl = RoundedCornerShape(9.dp)
+    val Chip = RoundedCornerShape(50)
+    val Panel = RoundedCornerShape(20.dp)
+    val Field = RoundedCornerShape(14.dp)
+    val Separator = Color(0xFFE7E8EC)
+    val Secondary = Color(0xFF626873)
+    val Chrome = Color(0xFFF5F6F8)
+    val SubtleBlue = Color(0xFFEAF2FF)
+}
+
+internal object UiSpace {
+    val XSmall = 4.dp
+    val Small = 8.dp
+    val Medium = 12.dp
+    val Large = 16.dp
+    val XLarge = 24.dp
+    val PageCompact = 16.dp
+    val PageRegular = 24.dp
 }
 
 /** Lightweight glass-like chrome; no video readback or full-screen blur. */
@@ -61,7 +74,7 @@ internal fun Modifier.glassSurface(
         )
     }
     .border(if (focused) 2.dp else 1.dp,
-        if (focused) UiColors.Info else Color.White.copy(alpha = 0.78f), shape)
+        if (focused) UiColors.Info else AppleUi.Separator.copy(alpha = 0.9f), shape)
     .clip(shape)
 }
 
@@ -82,16 +95,16 @@ internal fun NavigationRow(label: String, icon: ImageVector, onClick: () -> Unit
     Row(
         Modifier.fillMaxWidth().heightIn(min = 64.dp)
             .onFocusChanged { focused = it.isFocused }
-            .clip(MaterialTheme.shapes.medium)
+            .clip(AppleUi.Control)
             .background(if (focused) UiColors.Info.copy(alpha = 0.08f) else Color.Transparent)
             .border(if (focused) 2.dp else 0.dp,
-                if (focused) UiColors.Info else Color.Transparent, MaterialTheme.shapes.medium)
+                if (focused) UiColors.Info else Color.Transparent, AppleUi.Control)
             .clickable(onClick = onClick).padding(horizontal = 4.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        Box(Modifier.size(32.dp).background(UiColors.Info.copy(alpha = 0.08f), MaterialTheme.shapes.medium),
+        Box(Modifier.size(36.dp).background(UiColors.Info.copy(alpha = 0.08f), AppleUi.Control),
             contentAlignment = Alignment.Center) {
-            Icon(icon, null, Modifier.size(20.dp), tint = UiColors.Info)
+            Icon(icon, null, Modifier.size(19.dp), tint = UiColors.Info)
         }
         Text(label, Modifier.weight(1f).padding(horizontal = 12.dp), fontSize = 17.sp,
             color = MaterialTheme.colorScheme.onSurface, maxLines = 2, overflow = TextOverflow.Ellipsis)

@@ -64,14 +64,14 @@ fun AdminScreen(
             .background(MaterialTheme.colorScheme.background).systemBarsPaddingCompat()
             .verticalScroll(rememberScrollState())
             .padding(
-                horizontal = if (compact) 16.dp else 32.dp,
-                vertical = if (compact) 16.dp else 24.dp
+                horizontal = if (compact) UiSpace.PageCompact else UiSpace.PageRegular,
+                vertical = if (compact) UiSpace.PageCompact else UiSpace.PageRegular
             )
     ) {
         PageHeader(title = "频道管理", onBack = onExit)
         Spacer(modifier = Modifier.height(24.dp))
         SectionLabel("频道源")
-        NavigationRow("源地址管理", UiIcons.Pencil, onOpenAddresses)
+        NavigationRow("源地址管理", UiIcons.List, onOpenAddresses)
         ListSeparator(inset = 48.dp)
         NavigationRow("失效线路管理", UiIcons.Gauge, onOpenDeadChannels)
         ListSeparator(inset = 48.dp)
