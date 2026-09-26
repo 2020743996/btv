@@ -18,12 +18,17 @@ class SettingsBackupTest {
         val original = SettingsBackup(
             listOf("https://example.com/list.m3u?token=secret"), "https://example.com/guide.xml",
             listOf("CCTV-1"), listOf("CCTV-1"), true, 2,
-            StartupMode.SHOW_LIST, PictureMode.FIT
+            StartupMode.SHOW_LIST, PictureMode.FIT, glassTransparency = 32
         )
         assertEquals(original, decodeBackup(encodeBackup(original)))
+        val legacy = JSONObject(encodeBackup(original)).apply { remove("glassTransparency") }
+        assertEquals(18, decodeBackup(legacy.toString()).glassTransparency)
         val invalid = JSONObject(encodeBackup(original)).put("m3uUrls", JSONArray().put("invalid"))
         assertThrows(IllegalArgumentException::class.java) {
             decodeBackup(invalid.toString())
+        }
+        assertThrows(IllegalArgumentException::class.java) {
+            decodeBackup(JSONObject(encodeBackup(original)).put("glassTransparency", 41).toString())
         }
     }
 

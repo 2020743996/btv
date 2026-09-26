@@ -17,6 +17,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
@@ -190,10 +191,11 @@ internal fun PlaybackOptionsDialog(
     onDismiss: () -> Unit,
     content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit
 ) {
+    val context = LocalContext.current
     Dialog(onDismissRequest = onBack, properties = DialogProperties(usePlatformDefaultWidth = false)) {
         Column(Modifier.padding(16.dp).widthIn(max = 560.dp).fillMaxWidth()
             .height(minOf(600f, LocalConfiguration.current.screenHeightDp * 0.86f).dp)
-            .glassSurface(shape = AppleUi.Panel).padding(12.dp)) {
+            .glassSurface(shape = AppleUi.Panel, transparency = getGlassTransparency(context) / 100f).padding(12.dp)) {
             PageHeader(title = title, onBack = onBack)
             key(title) {
                 LazyColumn(Modifier.weight(1f).fillMaxWidth().testTag("playback-options-list"), content = content)

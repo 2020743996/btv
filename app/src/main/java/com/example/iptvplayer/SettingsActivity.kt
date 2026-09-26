@@ -27,6 +27,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -80,6 +81,7 @@ fun SettingsScreen(onOpenSources: () -> Unit, onOpenAdmin: () -> Unit, onBack: (
     val context = LocalContext.current
     var elderMode by remember { mutableStateOf(isElderMode(context)) }
     var fontSize by remember { mutableIntStateOf(getFontSize(context)) }
+    var glassTransparency by remember { mutableIntStateOf(getGlassTransparency(context)) }
     var startupMode by remember { mutableStateOf(getStartupMode(context)) }
     var epgUrl by remember { mutableStateOf(getEpgUrl(context).orEmpty()) }
     var epgError by remember { mutableStateOf<String?>(null) }
@@ -177,6 +179,19 @@ fun SettingsScreen(onOpenSources: () -> Unit, onOpenAdmin: () -> Unit, onBack: (
                 Spacer(modifier = Modifier.height(6.dp))
                 FontSizeSelector(selected = fontSize, onSelected = { fontSize = it })
 
+                Spacer(modifier = Modifier.height(22.dp))
+                SectionLabel("界面材质")
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("液态玻璃透明度", Modifier.weight(1f), fontSize = 16.sp)
+                    Text("$glassTransparency%", color = MaterialTheme.colorScheme.onSurfaceVariant, fontSize = 14.sp)
+                }
+                Slider(
+                    value = glassTransparency.toFloat(),
+                    onValueChange = { glassTransparency = it.toInt().coerceIn(0, 40) },
+                    valueRange = 0f..40f,
+                    steps = 39
+                )
+
                 Spacer(modifier = Modifier.height(24.dp))
                 SectionLabel("频道源与节目单")
                 NavigationRow("管理频道源", UiIcons.Pencil, onOpenSources)
@@ -239,6 +254,7 @@ fun SettingsScreen(onOpenSources: () -> Unit, onOpenAdmin: () -> Unit, onBack: (
                         }
                         setElderMode(context, elderMode)
                         setFontSize(context, fontSize)
+                        setGlassTransparency(context, glassTransparency)
                         setStartupMode(context, startupMode)
                         if (epgUrl.trim() != getEpgUrl(context).orEmpty()) setEpgUrl(context, epgUrl)
                         onBack()

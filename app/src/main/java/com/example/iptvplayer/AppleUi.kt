@@ -13,6 +13,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
@@ -37,16 +38,32 @@ internal object AppleUi {
 internal fun Modifier.glassSurface(
     shape: Shape = AppleUi.Control,
     focused: Boolean = false,
-    tinted: Boolean = false
-): Modifier = shadow(if (focused) 4.dp else 1.dp, shape, clip = false,
+    tinted: Boolean = false,
+    transparency: Float = 0.18f
+): Modifier {
+    val clearAmount = transparency.coerceIn(0f, 0.4f)
+    val baseAlpha = 1f - clearAmount
+    return shadow(if (focused) 4.dp else 1.dp, shape, clip = false,
     ambientColor = Color.Black.copy(alpha = 0.06f), spotColor = Color.Black.copy(alpha = 0.08f))
     .background(Brush.verticalGradient(listOf(
-        Color.White.copy(alpha = 0.98f),
-        if (tinted) Color(0xFFE8F1FF) else AppleUi.Chrome.copy(alpha = 0.94f)
+        Color.White.copy(alpha = baseAlpha),
+        (if (tinted) Color(0xFFE8F1FF) else AppleUi.Chrome).copy(alpha = baseAlpha)
     )), shape)
+    .drawBehind {
+        val bandHeight = size.height * 0.22f
+        drawRect(
+            brush = Brush.verticalGradient(
+                colors = listOf(Color.White.copy(alpha = 0.28f * baseAlpha), Color.Transparent),
+                startY = 0f,
+                endY = bandHeight
+            ),
+            size = androidx.compose.ui.geometry.Size(size.width, bandHeight)
+        )
+    }
     .border(if (focused) 2.dp else 1.dp,
-        if (focused) UiColors.Info else Color(0xFFE9EBEF), shape)
+        if (focused) UiColors.Info else Color.White.copy(alpha = 0.78f), shape)
     .clip(shape)
+}
 
 @Composable
 internal fun SectionLabel(text: String) {

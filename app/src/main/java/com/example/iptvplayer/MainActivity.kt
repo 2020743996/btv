@@ -4,6 +4,7 @@ import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -13,24 +14,24 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
@@ -51,9 +52,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalConfiguration
-import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
@@ -74,7 +74,9 @@ import kotlinx.coroutines.sync.withPermit
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import java.time.ZoneId
+import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.util.Date
 
 class MainActivity : ComponentActivity() {
     private var reloadKey by mutableIntStateOf(0)
@@ -417,6 +419,54 @@ fun channelStatusText(channel: Channel): String? {
 
 private data class ChannelGroup(val key: String, val name: String, val channels: List<Channel>)
 
+private enum class MainSection(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
+    LIVE("直播", UiIcons.Play),
+    GUIDE("节目单", UiIcons.Calendar),
+    FAVORITES("收藏", UiIcons.Heart),
+    RECENT("最近观看", UiIcons.History),
+    SOURCES("频道源", UiIcons.Pencil),
+    SETTINGS("设置", UiIcons.Sliders)
+}
+
+@Composable
+private fun MainNavigationPanel(
+    selected: MainSection,
+    onSelect: (MainSection) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    Column(
+        modifier.glassSurface(shape = AppleUi.Panel, transparency = getGlassTransparency(context) / 100f)
+            .padding(horizontal = 10.dp, vertical = 14.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        Text("btv", Modifier.padding(start = 12.dp, bottom = 10.dp),
+            style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+        MainSection.entries.forEach { section ->
+            var focused by remember { mutableStateOf(false) }
+            Row(
+                Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                    .onFocusChanged { focused = it.isFocused }
+                    .clip(MaterialTheme.shapes.medium)
+                    .background(if (selected == section) UiColors.Info.copy(alpha = 0.10f)
+                        else if (focused) UiColors.Info.copy(alpha = 0.06f) else Color.Transparent)
+                    .border(if (focused) 2.dp else 0.dp,
+                        if (focused) UiColors.Info else Color.Transparent, MaterialTheme.shapes.medium)
+                    .clickable { onSelect(section) }
+                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(section.icon, null, Modifier.size(20.dp),
+                    tint = if (selected == section) UiColors.Info else AppleUi.Secondary)
+                Text(section.title, Modifier.weight(1f).padding(start = 12.dp), maxLines = 1,
+                    overflow = TextOverflow.Ellipsis, fontSize = 15.sp,
+                    fontWeight = if (selected == section) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (selected == section) UiColors.Info else MaterialTheme.colorScheme.onSurface)
+            }
+        }
+    }
+}
+
 @Composable
 fun ChannelList(
     groupedChannels: Map<String, List<Channel>>,
@@ -438,25 +488,43 @@ fun ChannelList(
     val allChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
     // 预建 "频道名 → 频道" 映射，避免最近观看逐个线性查找（O(n²)）。
     val channelByName = remember(allChannels) { allChannels.associateBy { it.name } }
-    val groups = remember(allChannels, channelByName, favorites, recentNames) {
+    val groups = remember(allChannels, groupedChannels) {
         buildList {
             add(ChannelGroup("all", "全部频道", allChannels))
-            val recent = recentNames.mapNotNull { name -> channelByName[name] }
-            if (recent.isNotEmpty()) add(ChannelGroup("recent", "最近观看", recent))
-            val favoriteChannels = allChannels.filter { it.name in favorites }
-            if (favoriteChannels.isNotEmpty()) add(ChannelGroup("favorite", "我的收藏", favoriteChannels))
             groupedChannels.forEach { (name, channels) ->
                 add(ChannelGroup("source:$name", name, channels))
             }
         }
     }
     var selectedGroupKey by remember { mutableStateOf("all") }
-    var guideMode by rememberSaveable { mutableStateOf(false) }
-    val selectedGroup = groups.firstOrNull { it.key == selectedGroupKey } ?: groups.first()
+    var selectedSection by rememberSaveable { mutableStateOf(MainSection.LIVE) }
+    var navigationOpen by rememberSaveable { mutableStateOf(false) }
+    var selectedGuideDate by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
+    val selectedGroup = groups.firstOrNull { it.key == selectedGroupKey }
+        ?: groups.firstOrNull()
+        ?: ChannelGroup("all", "全部频道", emptyList())
+    val visibleGroup = when (selectedSection) {
+        MainSection.FAVORITES -> ChannelGroup("favorite", "我的收藏", allChannels.filter { it.name in favorites })
+        MainSection.RECENT -> ChannelGroup("recent", "最近观看", recentNames.mapNotNull(channelByName::get))
+        else -> selectedGroup
+    }
+    val guideMode = selectedSection == MainSection.GUIDE
 
     // 自适应：电视/平板用"左分组 + 右频道"两栏，手机用"顶部横向分组 + 下方列表"单栏。
     // 手机横屏仍使用单栏，避免 600~840dp 宽度被固定侧栏挤压。
     val isWide = useWideChannelLayout()
+
+    val navigate: (MainSection) -> Unit = { destination ->
+        when (destination) {
+            MainSection.LIVE, MainSection.GUIDE -> selectedSection = destination
+            MainSection.FAVORITES -> selectedSection = destination
+            MainSection.RECENT -> selectedSection = destination
+            MainSection.SOURCES -> onOpenSources()
+            MainSection.SETTINGS -> onOpenSettings()
+        }
+        navigationOpen = false
+    }
+    BackHandler(enabled = navigationOpen) { navigationOpen = false }
 
     Box(
         modifier = Modifier
@@ -466,14 +534,18 @@ fun ChannelList(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .padding(start = if (isWide) 224.dp else 0.dp)
                 .padding(
                     horizontal = if (isWide) 28.dp else 14.dp,
                     vertical = if (isWide) 20.dp else 12.dp
                 )
         ) {
             PageHeader(
-                title = "btv",
-                subtitle = if (isWide) "直播" else null,
+                title = if (selectedSection == MainSection.LIVE) "btv" else selectedSection.title,
+                subtitle = if (isWide && selectedSection == MainSection.LIVE) "直播" else null,
+                leading = if (!isWide) {
+                    { ToolbarAction(UiIcons.Menu, "打开导航", { navigationOpen = true }, showLabel = false) }
+                } else null,
                 compactActions = !isWide,
                 actions = {
                     TopBarButtons(
@@ -510,9 +582,6 @@ fun ChannelList(
                 )
             }
             Spacer(modifier = Modifier.height(if (isWide) 18.dp else 12.dp))
-            Box(Modifier.widthIn(max = 280.dp)) {
-                SegmentedControl(listOf("频道", "节目单"), if (guideMode) 1 else 0) { guideMode = it == 1 }
-            }
             if (guideMode && EpgCache.configuredUrls.isEmpty()) {
                 Text("暂无节目单 · 在设置中添加 XMLTV 地址", color = AppleUi.Secondary,
                     fontSize = 13.sp, modifier = Modifier.padding(top = 8.dp).clickable(onClick = onOpenSettings))
@@ -523,6 +592,7 @@ fun ChannelList(
             }
             Spacer(modifier = Modifier.height(if (isWide) 14.dp else 8.dp))
 
+            if (selectedSection == MainSection.LIVE || guideMode) {
             if (isWide) {
                 // ===== 电视/平板：左分组 + 右频道 两栏 =====
                 Row(modifier = Modifier.fillMaxSize()) {
@@ -552,6 +622,8 @@ fun ChannelList(
                         favorites = favorites,
                         epgRevision = epgRevision,
                         guideMode = guideMode,
+                        guideDate = LocalDate.parse(selectedGuideDate),
+                        onGuideDateChange = { selectedGuideDate = it.toString() },
                         onChannelClick = onChannelClick,
                         onToggleFavorite = onToggleFavorite,
                         modifier = Modifier.weight(1f)
@@ -579,11 +651,42 @@ fun ChannelList(
                     favorites = favorites,
                     epgRevision = epgRevision,
                     guideMode = guideMode,
+                    guideDate = LocalDate.parse(selectedGuideDate),
+                    onGuideDateChange = { selectedGuideDate = it.toString() },
                     onChannelClick = onChannelClick,
                     onToggleFavorite = onToggleFavorite,
                     modifier = Modifier.weight(1f)
                 )
             }
+            } else {
+                ChannelListContent(
+                    selectedGroup = visibleGroup,
+                    favorites = favorites,
+                    epgRevision = epgRevision,
+                    guideMode = false,
+                    guideDate = LocalDate.parse(selectedGuideDate),
+                    onGuideDateChange = { selectedGuideDate = it.toString() },
+                    onChannelClick = onChannelClick,
+                    onToggleFavorite = onToggleFavorite,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        if (isWide) {
+            MainNavigationPanel(
+                selected = selectedSection,
+                onSelect = navigate,
+                modifier = Modifier.align(Alignment.CenterStart).width(208.dp).fillMaxHeight()
+                    .padding(start = 12.dp, top = 20.dp, bottom = 20.dp)
+            )
+        } else if (navigationOpen) {
+            Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.25f)).clickable { navigationOpen = false })
+            MainNavigationPanel(
+                selected = selectedSection,
+                onSelect = navigate,
+                modifier = Modifier.align(Alignment.CenterStart).width(280.dp).fillMaxHeight()
+                    .padding(start = 8.dp, top = 8.dp, bottom = 8.dp)
+            )
         }
     }
 }
@@ -643,6 +746,8 @@ private fun ChannelListContent(
     favorites: Set<String>,
     epgRevision: Int,
     guideMode: Boolean,
+    guideDate: LocalDate,
+    onGuideDateChange: (LocalDate) -> Unit,
     onChannelClick: (Channel) -> Unit,
     onToggleFavorite: (Channel) -> Unit,
     modifier: Modifier = Modifier
@@ -664,7 +769,26 @@ private fun ChannelListContent(
             )
         }
         Spacer(modifier = Modifier.height(10.dp))
-        LazyColumn(
+        if (selectedGroup.channels.isEmpty()) {
+            Text(
+                when (selectedGroup.key) {
+                    "favorite" -> "还没有收藏的频道"
+                    "recent" -> "还没有观看记录"
+                    else -> if (guideMode) "此分组暂无匹配节目" else "此分组暂无频道"
+                },
+                color = AppleUi.Secondary,
+                modifier = Modifier.padding(vertical = 20.dp)
+            )
+        } else if (guideMode) {
+            GuideScheduleContent(
+                channels = selectedGroup.channels,
+                selectedDate = guideDate,
+                onDateChange = onGuideDateChange,
+                epgRevision = epgRevision,
+                onChannelClick = onChannelClick,
+                modifier = Modifier.weight(1f)
+            )
+        } else LazyColumn(
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(0.dp)
@@ -674,8 +798,7 @@ private fun ChannelListContent(
                 val nowPlaying = remember(epgRevision, channel) { currentProgrammeTitle(channel) }
                 // 状态只依赖频道自身：测速后是新的 Channel 实例，不必随 EPG 刷新重算排序。
                 val status = remember(channel) { channelStatusText(channel) }
-                if (guideMode) GuideChannelRow(channel, epgRevision, onClick = { onChannelClick(channel) })
-                else ChannelRow(
+                ChannelRow(
                     channel = channel,
                     index = index + 1,
                     status = status,
@@ -688,6 +811,149 @@ private fun ChannelListContent(
             }
         }
     }
+}
+
+@Composable
+private fun GuideScheduleContent(
+    channels: List<Channel>,
+    selectedDate: LocalDate,
+    onDateChange: (LocalDate) -> Unit,
+    epgRevision: Int,
+    onChannelClick: (Channel) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val isWide = useWideChannelLayout()
+    val glassTransparency = getGlassTransparency(LocalContext.current) / 100f
+    val zone = remember { ZoneId.systemDefault() }
+    val start = remember(selectedDate, zone) { selectedDate.atStartOfDay(zone).toInstant().toEpochMilli() }
+    val end = remember(selectedDate, zone) { selectedDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() }
+    val timelineScroll = rememberScrollState()
+    var selectedProgramme by remember { mutableStateOf<Programme?>(null) }
+    val now = System.currentTimeMillis()
+    val hourWidth = 96.dp
+    val dayMinutes = ((end - start) / 60_000L).toInt().coerceAtLeast(1)
+    val currentMinute = ((now - start) / 60_000L).toInt().coerceIn(0, dayMinutes - 1)
+    val dateFormatter = remember { DateTimeFormatter.ofPattern("M月d日") }
+
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 10.dp)) {
+        items(7) { offset ->
+            val date = LocalDate.now().plusDays(offset.toLong())
+            GuideDateChip(if (offset == 0) "今天" else dateFormatter.format(date), date == selectedDate) {
+                onDateChange(date)
+            }
+        }
+    }
+    if (isWide) {
+        Row(Modifier.fillMaxWidth().padding(start = 176.dp).horizontalScroll(timelineScroll)) {
+            repeat((dayMinutes + 59) / 60) { hour ->
+                Box(Modifier.width(hourWidth).height(24.dp)) {
+                    Text("%02d:00".format(hour), color = AppleUi.Secondary, fontSize = 12.sp)
+                    if (selectedDate == LocalDate.now(zone) && currentMinute / 60 == hour) {
+                        Box(Modifier.align(Alignment.TopStart)
+                            .padding(start = hourWidth * ((currentMinute % 60) / 60f))
+                            .width(2.dp).height(24.dp).background(UiColors.Live))
+                    }
+                }
+            }
+        }
+    }
+    LazyColumn(modifier = modifier.fillMaxWidth(), contentPadding = PaddingValues(bottom = 20.dp)) {
+        items(channels, key = { it.name }) { channel ->
+            val programmes = remember(channel.tvgIds, selectedDate, epgRevision) {
+                EpgCache.guide(channel.tvgIds, Date(start), Date(end))
+            }
+            if (isWide) {
+                Row(Modifier.fillMaxWidth().heightIn(min = 74.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Row(Modifier.width(176.dp).padding(end = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                        ChannelLogo(channel, size = 40.dp)
+                        Text(channel.name, Modifier.weight(1f).padding(start = 10.dp), maxLines = 2,
+                            overflow = TextOverflow.Ellipsis, fontSize = 13.sp, fontWeight = FontWeight.Medium)
+                    }
+                    Row(Modifier.horizontalScroll(timelineScroll).heightIn(min = 58.dp), verticalAlignment = Alignment.CenterVertically) {
+                        var cursor = 0L
+                        if (programmes.isEmpty()) Text("暂无节目", Modifier.width(hourWidth), color = AppleUi.Secondary, fontSize = 12.sp)
+                        programmes.forEach { programme ->
+                            val programmeStart = programme.start.time.coerceIn(start, end)
+                            val programmeEnd = programme.end.time.coerceIn(start, end)
+                            val startMinute = ((programmeStart - start) / 60_000L).coerceIn(0, dayMinutes.toLong())
+                            val endMinute = ((programmeEnd - start) / 60_000L).coerceIn(startMinute, dayMinutes.toLong())
+                            val gapMinutes = (startMinute - cursor).coerceAtLeast(0)
+                            if (gapMinutes > 0) Spacer(Modifier.width(hourWidth * (gapMinutes / 60f)))
+                            val width = (hourWidth * ((endMinute - startMinute) / 60f)).coerceAtLeast(40.dp)
+                            val active = now >= programme.start.time && now < programme.end.time
+                            Column(
+                                Modifier.width(width).height(52.dp).padding(end = 4.dp)
+                                    .clip(AppleUi.Control)
+                                    .background(if (active) UiColors.Live.copy(alpha = 0.08f)
+                                        else Color.White.copy(alpha = 1f - glassTransparency))
+                                    .border(1.dp, Color.White.copy(alpha = 0.8f), AppleUi.Control)
+                                    .clickable { if (active) onChannelClick(channel) else selectedProgramme = programme }
+                                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                                verticalArrangement = Arrangement.Center
+                            ) {
+                                Text(programme.title, fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                Text(guideTimeFormat.format(programme.start.toInstant().atZone(zone)),
+                                    fontSize = 10.sp, color = AppleUi.Secondary)
+                            }
+                            cursor = endMinute.toLong()
+                        }
+                        val remainingMinutes = (dayMinutes.toLong() - cursor).coerceAtLeast(0)
+                        if (remainingMinutes > 0) Spacer(Modifier.width(hourWidth * (remainingMinutes / 60f)))
+                    }
+                }
+            } else {
+                Column(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ChannelLogo(channel, size = 40.dp)
+                        Text(channel.name, Modifier.weight(1f).padding(start = 10.dp), maxLines = 1,
+                            overflow = TextOverflow.Ellipsis, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                        ToolbarAction(UiIcons.Play, "播放 ${channel.name}", { onChannelClick(channel) }, showLabel = false)
+                    }
+                    if (programmes.isEmpty()) {
+                        Text("暂无节目", Modifier.padding(start = 50.dp, top = 7.dp), color = AppleUi.Secondary, fontSize = 13.sp)
+                    } else {
+                        programmes.forEach { programme ->
+                            val active = now >= programme.start.time && now < programme.end.time
+                            Row(Modifier.fillMaxWidth().padding(start = 50.dp, top = 6.dp)
+                                .clip(MaterialTheme.shapes.small)
+                                .background(if (active) UiColors.Live.copy(alpha = 0.08f) else Color.Transparent)
+                                .clickable { if (active) onChannelClick(channel) else selectedProgramme = programme }
+                                .padding(horizontal = 8.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Text(guideTimeFormat.format(programme.start.toInstant().atZone(zone)),
+                                    Modifier.width(52.dp), color = if (active) UiColors.Live else AppleUi.Secondary, fontSize = 12.sp)
+                                Text(programme.title, Modifier.weight(1f).padding(start = 8.dp), maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
+                                if (active) Text("正在播", color = UiColors.Live, fontSize = 11.sp)
+                            }
+                        }
+                    }
+                }
+                ListSeparator(inset = 50.dp)
+            }
+        }
+    }
+    selectedProgramme?.let { programme ->
+        AlertDialog(
+            onDismissRequest = { selectedProgramme = null },
+            title = { Text(programme.title) },
+            text = {
+                Text("${DateTimeFormatter.ofPattern("M月d日 HH:mm").format(programme.start.toInstant().atZone(zone))} - " +
+                    "${DateTimeFormatter.ofPattern("HH:mm").format(programme.end.toInstant().atZone(zone))}\n此节目暂不支持回看。")
+            },
+            confirmButton = { TextButton(onClick = { selectedProgramme = null }) { Text("关闭") } }
+        )
+    }
+}
+
+@Composable
+private fun GuideDateChip(label: String, selected: Boolean, onClick: () -> Unit) {
+    var focused by remember { mutableStateOf(false) }
+    val transparency = getGlassTransparency(LocalContext.current) / 100f
+    Text(label, Modifier.height(38.dp).onFocusChanged { focused = it.isFocused }
+        .glassSurface(focused = focused, tinted = selected, transparency = transparency)
+        .border(if (focused) 2.dp else 1.dp, if (focused) UiColors.Info else AppleUi.Separator, AppleUi.Control)
+        .clickable(onClick = onClick).padding(horizontal = 12.dp, vertical = 9.dp),
+        color = if (selected) UiColors.Info else MaterialTheme.colorScheme.onSurface, fontSize = 13.sp)
 }
 
 /** 手机模式用的横向分组切换。 */
@@ -810,33 +1076,3 @@ fun ChannelRow(
 }
 
 private val guideTimeFormat: DateTimeFormatter = DateTimeFormatter.ofPattern("HH:mm")
-
-@Composable
-private fun GuideChannelRow(channel: Channel, epgRevision: Int, onClick: () -> Unit) {
-    val schedule = remember(channel.tvgIds, epgRevision) { EpgCache.schedule(channel.tvgIds) }
-    var focused by remember { mutableStateOf(false) }
-    fun time(programme: Programme): String = guideTimeFormat.format(programme.start.toInstant().atZone(ZoneId.systemDefault()))
-    Row(
-        modifier = Modifier.fillMaxWidth().heightIn(min = 84.dp)
-            .onFocusChanged { focused = it.isFocused }
-            .background(if (focused) UiColors.Info.copy(alpha = 0.06f) else Color.White)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 4.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ChannelLogo(channel, size = 44.dp)
-        Spacer(Modifier.width(12.dp))
-        Column(Modifier.weight(1f)) {
-            Text(channel.name, fontSize = 15.sp, fontWeight = FontWeight.SemiBold,
-                maxLines = 1, overflow = TextOverflow.Ellipsis)
-            Text(schedule.current?.let { "正在播 ${time(it)}  ${it.title}" } ?: "暂无正在播出的节目",
-                color = if (schedule.current == null) AppleUi.Secondary else MaterialTheme.colorScheme.onSurface,
-                fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            schedule.next?.let {
-                Text("接下来 ${time(it)}  ${it.title}", color = AppleUi.Secondary,
-                    fontSize = 12.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            }
-        }
-        Icon(UiIcons.Play, contentDescription = "播放 ${channel.name}", tint = UiColors.Info, modifier = Modifier.size(20.dp))
-    }
-}

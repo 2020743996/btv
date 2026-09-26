@@ -67,9 +67,11 @@ class AppleUiTest {
         compose.runOnIdle { assertEquals(channels[0].name, played) }
         compose.onAllNodesWithContentDescription("收藏")[0].performTouchInput { click() }
         compose.onNodeWithContentDescription("取消收藏").assertIsDisplayed()
-        compose.onNodeWithText("节目单").performClick()
-        compose.onAllNodesWithText("暂无正在播出的节目").onFirst().assertExists()
-        compose.onNodeWithText("频道").performClick()
+        if (!landscape) compose.onNodeWithContentDescription("打开导航").performClick()
+        compose.onAllNodesWithText("节目单").onFirst().performClick()
+        compose.onAllNodesWithText("暂无节目").onFirst().assertExists()
+        if (!landscape) compose.onNodeWithContentDescription("打开导航").performClick()
+        compose.onAllNodes(hasText("直播") and hasClickAction()).onFirst().performClick()
         screenshot("home")
         if (landscape) compose.onNodeWithText("卫视").performClick()
         else compose.onNodeWithText("卫视 2").performScrollTo().performClick()

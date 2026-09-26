@@ -8,6 +8,16 @@ import java.util.Date
 class EpgParserTest {
 
     @Test
+    fun programmeWindowFilteringUsesIntersectingTimeRanges() {
+        val start = 1_000_000L
+        val end = start + 12 * 60 * 60 * 1000L
+
+        assertEquals(true, isProgrammeInWindow(start + 1, end - 1, end, start))
+        assertEquals(false, isProgrammeInWindow(end, end + 1, end, start))
+        assertEquals(false, isProgrammeInWindow(start - 2, start, end, start))
+    }
+
+    @Test
     fun sourceChangeClearsOldScheduleAndRejectsOldDownload() {
         val programme = Programme("news", Date(0), Date(3_000), "old")
         val first = setOf("https://one.example/epg")
@@ -71,5 +81,19 @@ class EpgParserTest {
             current,
             getProgrammeSchedule(listOf(current), listOf(" cctv1 "), now).current
         )
+    }
+
+    @Test
+    fun guideCanQuerySevenDayWindowWithoutReturningAdjacentProgrammes() {
+        val source = setOf("https://guide.example/xmltv")
+        val start = Date(1_000_000L)
+        val included = Programme("news", Date(2_000_000L), Date(3_000_000L), "第七天节目")
+        val before = Programme("news", Date(0L), Date(999_999L), "之前")
+        val after = Programme("news", Date(8_000_000L), Date(9_000_000L), "之后")
+        EpgCache.configureSources(source)
+        EpgCache.update(mapOf("news" to listOf(before, included, after)), source)
+
+        assertEquals(listOf(included), EpgCache.guide(listOf("news"), start, Date(7_000_000L)))
+        EpgCache.configureSources(emptySet())
     }
 }

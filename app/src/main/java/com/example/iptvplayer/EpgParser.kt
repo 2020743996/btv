@@ -63,7 +63,11 @@ data class ProgrammeSchedule(
  * 解析 XMLTV 文本，返回所有节目。
  * 用安卓自带的 XmlPullParser 解析 XML（不用正则——XML 结构复杂，正则容易出错）。
  */
-fun parseXmltv(text: String): List<Programme> {
+fun parseXmltv(
+    text: String,
+    startBeforeMillis: Long? = null,
+    endAfterMillis: Long? = null
+): List<Programme> {
     val programmes = mutableListOf<Programme>()
     val parser = XmlPullParserFactory.newInstance().newPullParser()
     parser.setInput(StringReader(text))
@@ -95,7 +99,9 @@ fun parseXmltv(text: String): List<Programme> {
                     val start = parseXmltvTime(startText)
                     val end = parseXmltvTime(stopText)
                     // 时间格式异常的数据直接跳过（常见：有的源时间字段缺失）
-                    if (channelId != null && start != null && end != null) {
+                    if (channelId != null && start != null && end != null &&
+                        isProgrammeInWindow(start.time, end.time, startBeforeMillis, endAfterMillis)
+                    ) {
                         programmes.add(Programme(channelId, start, end, title.trim()))
                     }
                     channelId = null
@@ -106,6 +112,14 @@ fun parseXmltv(text: String): List<Programme> {
     }
     return programmes
 }
+
+internal fun isProgrammeInWindow(
+    programmeStartMillis: Long,
+    programmeEndMillis: Long,
+    startBeforeMillis: Long?,
+    endAfterMillis: Long?
+): Boolean = (startBeforeMillis == null || programmeStartMillis < startBeforeMillis) &&
+    (endAfterMillis == null || programmeEndMillis > endAfterMillis)
 
 // SimpleDateFormat 不是线程安全的，且构造开销大；EPG 解析可能在多个后台线程跑，
 // 用 ThreadLocal 让每个线程复用各自的实例，而不是每解析一条节目就新建一个。
@@ -264,16 +278,33 @@ object EpgCache {
     fun currentProgramme(tvgIds: List<String>, now: Date = Date()): Programme? =
         schedule(tvgIds, now).current
 
-    fun guide(tvgIds: List<String>, now: Date = Date()): List<Programme> {
+    fun guide(tvgIds: List<String>, now: Date = Date()): List<Programme> =
+        guide(tvgIds, now, Date(now.time + DEFAULT_GUIDE_WINDOW_MS))
+
+    fun guide(tvgIds: List<String>, start: Date, end: Date): List<Programme> {
+        if (end <= start) return emptyList()
         val snapshot = programmesByChannel
         return tvgIds.map(::normalizeEpgChannelId).distinct()
             .flatMap { snapshot[it].orEmpty() }
-            .filter { it.end.after(now) && it.end.after(it.start) &&
-                it.start.time < now.time + 24 * 60 * 60 * 1000L }
+            .filter { it.end.after(start) && it.end.after(it.start) && it.start.before(end) }
             .distinctBy { Triple(it.start.time, it.end.time, it.title) }
             .sortedBy { it.start }
     }
+
+    fun programmesByChannel(tvgIds: List<String>, start: Date, end: Date): Map<String, List<Programme>> {
+        if (end <= start) return emptyMap()
+        val snapshot = programmesByChannel
+        return tvgIds.map(::normalizeEpgChannelId).distinct().mapNotNull { channelId ->
+            val matches = snapshot[channelId].orEmpty().filter {
+                it.end.after(start) && it.end.after(it.start) && it.start.before(end)
+            }
+            matches.takeIf { it.isNotEmpty() }?.let { channelId to it }
+        }.toMap()
+    }
 }
+
+private const val GUIDE_HORIZON_MS = 7L * 24 * 60 * 60 * 1000
+private const val DEFAULT_GUIDE_WINDOW_MS = 24L * 60 * 60 * 1000
 
 /**
  * 从 M3U 文件里提取 EPG 地址并下载解析，结果存进 EpgCache。
@@ -284,7 +315,7 @@ object EpgCache {
  * - 下载在 IO 线程（downloadM3u 内部切 IO）
  * - 解析 + 过滤 + 按频道分组都是 CPU 密集，放在 Dispatchers.Default 上跑，
  *   绝不能占主线程，否则会阻塞界面/按键导致 ANR
- * - 只保留"当前时刻附近"的节目（界面只需"现在播什么"），降低内存占用
+ * - 在解析阶段只保留最近节目到未来七天的时间窗，支持完整节目浏览并限制内存占用
  */
 private val epgRefreshLock = Mutex()
 
@@ -294,7 +325,7 @@ suspend fun refreshConfiguredEpg(context: Context) = epgRefreshLock.withLock {
     val snapshots = SourceSnapshots(context)
 
     val now = System.currentTimeMillis()
-    val maxStart = now + 24 * 3600_000L
+    val maxStart = now + GUIDE_HORIZON_MS
     val minEnd = now - 2 * 3600_000L
 
     val perSource = coroutineScope {
@@ -305,9 +336,7 @@ suspend fun refreshConfiguredEpg(context: Context) = epgRefreshLock.withLock {
                     limit.withPermit {
                         val text = downloadM3u(epgUrl)
                         val programmes = withContext(Dispatchers.Default) {
-                            parseXmltv(text).filter { programme ->
-                                programme.start.time < maxStart && programme.end.time > minEnd
-                            }
+                            parseXmltv(text, startBeforeMillis = maxStart, endAfterMillis = minEnd)
                         }
                         try {
                             snapshots.save("epg", epgUrl, text)
@@ -324,7 +353,7 @@ suspend fun refreshConfiguredEpg(context: Context) = epgRefreshLock.withLock {
                     val cached = snapshots.load("epg", epgUrl)
                     val programmes = cached?.let { text ->
                         withContext(Dispatchers.Default) {
-                            runCatching { parseXmltv(text).filter { it.start.time < maxStart && it.end.time > minEnd } }.getOrNull()
+                            runCatching { parseXmltv(text, startBeforeMillis = maxStart, endAfterMillis = minEnd) }.getOrNull()
                         }
                     }
                     if (programmes != null) {

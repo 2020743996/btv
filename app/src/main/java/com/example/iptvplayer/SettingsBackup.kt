@@ -12,7 +12,8 @@ internal data class SettingsBackup(
     val elderMode: Boolean,
     val fontSize: Int,
     val startupMode: StartupMode,
-    val pictureMode: PictureMode
+    val pictureMode: PictureMode,
+    val glassTransparency: Int = 18
 )
 
 internal fun encodeBackup(data: SettingsBackup): String = JSONObject().apply {
@@ -25,6 +26,7 @@ internal fun encodeBackup(data: SettingsBackup): String = JSONObject().apply {
     put("fontSize", data.fontSize)
     put("startupMode", data.startupMode.name)
     put("pictureMode", data.pictureMode.name)
+    put("glassTransparency", normalizeGlassTransparency(data.glassTransparency))
 }.toString(2)
 
 internal fun decodeBackup(text: String): SettingsBackup {
@@ -41,19 +43,22 @@ internal fun decodeBackup(text: String): SettingsBackup {
     require(epg == null || isSupportedM3uUrl(epg)) { "备份包含无效的节目单地址" }
     val fontSize = json.getInt("fontSize")
     require(fontSize in 0..2) { "备份中的字体设置无效" }
+    val glassTransparency = json.optInt("glassTransparency", 18)
+    require(glassTransparency in 0..40) { "备份中的材质透明度无效" }
     return SettingsBackup(
         normalizeOrderedStringList(urls), epg,
         strings("favorites").distinct(), strings("recent").distinct(),
         json.getBoolean("elderMode"), fontSize,
         StartupMode.valueOf(json.getString("startupMode")),
-        PictureMode.valueOf(json.getString("pictureMode"))
+        PictureMode.valueOf(json.getString("pictureMode")),
+        glassTransparency
     )
 }
 
 internal fun readBackup(context: Context): SettingsBackup = SettingsBackup(
     getM3uUrls(context), getEpgUrl(context), getFavorites(context).toList(),
     getRecentChannels(context), isElderMode(context), getFontSize(context),
-    getStartupMode(context), getPictureMode(context)
+    getStartupMode(context), getPictureMode(context), getGlassTransparency(context)
 )
 
 internal fun restoreBackup(context: Context, data: SettingsBackup): Boolean {
@@ -68,6 +73,7 @@ internal fun restoreBackup(context: Context, data: SettingsBackup): Boolean {
         .putInt("font_size", data.fontSize)
         .putString("startup_mode", data.startupMode.name)
         .putString("picture_mode", data.pictureMode.name)
+        .putInt("glass_transparency", normalizeGlassTransparency(data.glassTransparency))
         .commit()
     if (saved) {
         ChannelCache.invalidate()

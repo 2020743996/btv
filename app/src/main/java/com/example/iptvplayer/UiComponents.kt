@@ -45,6 +45,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.platform.LocalContext
 import coil.compose.AsyncImage
 
 @Composable
@@ -189,6 +190,7 @@ fun ToolbarAction(
     grouped: Boolean = false
 ) {
     var focused by remember { mutableStateOf(false) }
+    val context = LocalContext.current
     val emphasized = focused || active
     val contentColor = if (enabled) accentColor else MaterialTheme.colorScheme.onSurfaceVariant
     TooltipBox(
@@ -200,7 +202,11 @@ fun ToolbarAction(
         modifier = modifier
             .height(44.dp)
             .onFocusChanged { focused = it.isFocused }
-            .then(if (!grouped) Modifier.glassSurface(focused = focused, tinted = active)
+            .then(if (!grouped) Modifier.glassSurface(
+                focused = focused,
+                tinted = active,
+                transparency = getGlassTransparency(context) / 100f
+            )
                 else Modifier.clip(AppleUi.Control)
                     .background(if (emphasized) accentColor.copy(alpha = 0.1f) else Color.Transparent)
                     .border(if (focused) 2.dp else 0.dp,
@@ -232,12 +238,14 @@ fun PageHeader(
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
     compactActions: Boolean = false,
+    leading: (@Composable () -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null
 ) {
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val stackActions = actions != null && shouldStackHeaderActions(maxWidth) && !compactActions
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(modifier = Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                leading?.invoke()
                 if (onBack != null) {
                     ToolbarAction(
                         icon = UiIcons.ChevronLeft,

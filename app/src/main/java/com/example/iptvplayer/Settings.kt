@@ -29,6 +29,7 @@ private const val KEY_FONT_SIZE = "font_size"
 private const val KEY_RECENT = "recent_channels"
 private const val KEY_STARTUP_MODE = "startup_mode"
 private const val KEY_EPG_URL = "epg_url"
+private const val KEY_GLASS_TRANSPARENCY = "glass_transparency"
 private val failRecordLock = Any()
 
 enum class StartupMode(val label: String) {
@@ -70,6 +71,15 @@ fun getPictureMode(context: Context): PictureMode =
 fun setPictureMode(context: Context, mode: PictureMode) {
     prefs(context).edit().putString("picture_mode", mode.name).apply()
 }
+
+fun getGlassTransparency(context: Context): Int =
+    normalizeGlassTransparency(prefs(context).getInt(KEY_GLASS_TRANSPARENCY, 18))
+
+fun setGlassTransparency(context: Context, percent: Int) {
+    prefs(context).edit().putInt(KEY_GLASS_TRANSPARENCY, normalizeGlassTransparency(percent)).apply()
+}
+
+internal fun normalizeGlassTransparency(percent: Int): Int = percent.coerceIn(0, 40)
 
 /** 读取保存的所有 M3U 地址；没设置过就返回空列表（首次使用需要手动添加源） */
 fun getM3uUrls(context: Context): List<String> {

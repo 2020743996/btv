@@ -43,6 +43,9 @@ object UiIcons {
         "M20.84 4.61a5.5 5.5 0 0 0-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 0 0-7.78 7.78L12 21.23l8.84-8.84a5.5 5.5 0 0 0 0-7.78z"
     )
     val Play = lineIcon("Play", "M6 3l14 9-14 9z")
+    val Menu = lineIcon("Menu", "M4 6h16", "M4 12h16", "M4 18h16")
+    val Calendar = lineIcon("Calendar", "M8 2v4", "M16 2v4", "M3 10h18", "M5 4h14a2 2 0 0 1 2 2v14H3V6a2 2 0 0 1 2-2z")
+    val History = lineIcon("History", "M3 12a9 9 0 1 0 2.64-6.36L3 8", "M3 3v5h5", "M12 7v5l3 2")
     val List = lineIcon("List", "M8 6h13", "M8 12h13", "M8 18h13", "M3 6h.01", "M3 12h.01", "M3 18h.01")
     val ArrowLeft = lineIcon("ArrowLeft", "M19 12H5", "M12 19l-7-7 7-7")
     val ChevronLeft = lineIcon("ChevronLeft", "M15 18l-6-6 6-6")
