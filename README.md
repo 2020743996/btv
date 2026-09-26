@@ -2,7 +2,7 @@
 
 btv 是一款面向手机、平板和 Android TV 的轻量 IPTV 播放器。界面以频道识别和遥控器操作为中心，不内置频道源，也不提供任何音视频内容。
 
-最新正式版为 **v1.12.0**，可在 [GitHub Releases](https://github.com/2020743996/btv/releases/tag/v1.12.0) 下载。苹果风格界面说明见 [UI 设计记录](docs/apple-ui.md)，功能与支持边界见 [播放功能说明](docs/playback-features.md)。
+最新正式版为 **v1.12.1**，可在 [GitHub Releases](https://github.com/2020743996/btv/releases/tag/v1.12.1) 下载。苹果风格界面说明见 [UI 设计记录](docs/apple-ui.md)，功能与支持边界见 [播放功能说明](docs/playback-features.md)。
 
 ## 下载
 

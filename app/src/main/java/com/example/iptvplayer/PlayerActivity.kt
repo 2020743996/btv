@@ -8,6 +8,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.KeyEvent
+import android.view.View
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -90,6 +91,7 @@ class PlayerActivity : ComponentActivity() {
     private var errorMessage by mutableStateOf<String?>(null)
     private var loadingMessage by mutableStateOf("正在连接直播源…")
     private var channelInfoVisible by mutableStateOf(true)
+    private var playbackActionsVisible by mutableStateOf(true)
     private var playbackQuality by mutableStateOf<String?>(null)
 
     private var urls by mutableStateOf<List<String>>(emptyList())
@@ -138,6 +140,10 @@ class PlayerActivity : ComponentActivity() {
 
     private val hideChannelInfo = Runnable {
         channelInfoVisible = false
+    }
+
+    private val hidePlaybackActionsRunnable = Runnable {
+        playbackActionsVisible = false
     }
 
     @UnstableApi
@@ -205,6 +211,7 @@ class PlayerActivity : ComponentActivity() {
                                 loadingMessage = ""
                                 scheduleStablePlaybackMark()
                                 showChannelInfoBriefly()
+                                showPlaybackActionsBriefly()
                             }
                             Player.STATE_BUFFERING -> if (playerState != PlayerUiState.ERROR) {
                                 mainHandler.removeCallbacks(markPlaybackStable)
@@ -254,6 +261,7 @@ class PlayerActivity : ComponentActivity() {
                     linePosition = if (urls.isEmpty()) "" else "线路 ${currentLineIndex + 1}/${urls.size}",
                     playbackQuality = playbackQuality,
                     channelInfoVisible = channelInfoVisible,
+                    playbackActionsVisible = playbackActionsVisible,
                     channels = allChannels,
                     channelListVisible = channelListVisible,
                     channelListSelection = channelListSelection,
@@ -264,7 +272,14 @@ class PlayerActivity : ComponentActivity() {
                     onRetry = { startFromFirst() },
                     onBack = { finish() },
                     pictureMode = pictureMode,
-                    onOpenMenu = { channelListVisible = false; menuVisible = true }
+                    onOpenMenu = {
+                        channelListVisible = false
+                        hidePlaybackActions()
+                        menuVisible = true
+                    },
+                    onPlaybackActionsChanged = { visible ->
+                        if (visible) showPlaybackActionsBriefly() else hidePlaybackActions()
+                    }
                 )
                 if (menuVisible) MenuContent()
             }
@@ -356,6 +371,7 @@ class PlayerActivity : ComponentActivity() {
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (menuVisible) return super.dispatchKeyEvent(event)
         if (event.action != KeyEvent.ACTION_DOWN) return super.dispatchKeyEvent(event)
+        if (event.repeatCount == 0) showPlaybackActionsBriefly()
 
         // 悬浮频道面板打开时：方向键只移动选择，OK 播放，BACK/LEFT 关闭。
         if (channelListVisible) {
@@ -400,7 +416,10 @@ class PlayerActivity : ComponentActivity() {
                 return true
             }
             KeyEvent.KEYCODE_MENU, KeyEvent.KEYCODE_DPAD_RIGHT -> {
-                if (event.repeatCount == 0) menuVisible = true
+                if (event.repeatCount == 0) {
+                    hidePlaybackActions()
+                    menuVisible = true
+                }
                 return true
             }
             KeyEvent.KEYCODE_INFO -> {
@@ -528,6 +547,17 @@ class PlayerActivity : ComponentActivity() {
         mainHandler.postDelayed(hideChannelInfo, CHANNEL_INFO_DURATION_MS)
     }
 
+    private fun showPlaybackActionsBriefly() {
+        playbackActionsVisible = true
+        mainHandler.removeCallbacks(hidePlaybackActionsRunnable)
+        mainHandler.postDelayed(hidePlaybackActionsRunnable, PLAYBACK_ACTIONS_DURATION_MS)
+    }
+
+    private fun hidePlaybackActions() {
+        mainHandler.removeCallbacks(hidePlaybackActionsRunnable)
+        playbackActionsVisible = false
+    }
+
     private fun cancelPlaybackTimeout() {
         mainHandler.removeCallbacks(playbackTimeout)
     }
@@ -547,14 +577,14 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
-    override fun onStart() {
-        super.onStart()
+    override fun onResume() {
+        super.onResume()
         if (sleepTimer.isExpired(SystemClock.elapsedRealtime())) {
             finish()
             return
         }
         if (playerState != PlayerUiState.ERROR) {
-            player?.play()
+            if (player?.playWhenReady != true) player?.play()
             if (playerState == PlayerUiState.LOADING) {
                 schedulePlaybackTimeout()
             } else if (playerState == PlayerUiState.PLAYING) {
@@ -563,10 +593,20 @@ class PlayerActivity : ComponentActivity() {
         }
     }
 
+    override fun onPause() {
+        cancelPlaybackTimeout()
+        mainHandler.removeCallbacks(markPlaybackStable)
+        mainHandler.removeCallbacks(hideChannelInfo)
+        mainHandler.removeCallbacks(hidePlaybackActionsRunnable)
+        player?.pause()
+        super.onPause()
+    }
+
     override fun onStop() {
         cancelPlaybackTimeout()
         mainHandler.removeCallbacks(markPlaybackStable)
         mainHandler.removeCallbacks(hideChannelInfo)
+        mainHandler.removeCallbacks(hidePlaybackActionsRunnable)
         player?.pause()
         super.onStop()
     }
@@ -582,6 +622,7 @@ class PlayerActivity : ComponentActivity() {
         private const val EXTRA_URLS = "channel_urls"
         private const val EXTRA_NAME = "channel_name"
         private const val CHANNEL_INFO_DURATION_MS = 4_000L
+        private const val PLAYBACK_ACTIONS_DURATION_MS = 4_000L
 
         fun createIntent(context: Context, channel: Channel): Intent =
             Intent(context, PlayerActivity::class.java)
@@ -614,16 +655,28 @@ fun PlayerScreen(
     onRetry: () -> Unit,
     onBack: () -> Unit,
     pictureMode: PictureMode = PictureMode.FIT,
-    onOpenMenu: () -> Unit = {}
+    onOpenMenu: () -> Unit = {},
+    playbackActionsVisible: Boolean = true,
+    onPlaybackActionsChanged: (Boolean) -> Unit = {}
 ) {
     BackHandler(enabled = channelListVisible) { onCloseChannels() }
     val channelButtonFocus = remember { androidx.compose.ui.focus.FocusRequester() }
     var hasOpenedChannels by remember { mutableStateOf(false) }
     LaunchedEffect(channelListVisible) {
         if (channelListVisible) hasOpenedChannels = true
-        else if (hasOpenedChannels) channelButtonFocus.requestFocus()
+        else if (hasOpenedChannels) {
+            onPlaybackActionsChanged(true)
+            androidx.compose.runtime.withFrameNanos { }
+            channelButtonFocus.requestFocus()
+        }
     }
     var epgRefreshTick by remember { mutableIntStateOf(0) }
+    var playerControllerWasVisible by remember(player) { mutableStateOf(false) }
+    val latestPlayerState = androidx.compose.runtime.rememberUpdatedState(playerState)
+    val latestActionsCallback = androidx.compose.runtime.rememberUpdatedState(onPlaybackActionsChanged)
+    LaunchedEffect(playerState) {
+        if (playerState != PlayerUiState.PLAYING) playerControllerWasVisible = false
+    }
     val context = LocalContext.current
     val lifecycle = (context as ComponentActivity).lifecycle
     LaunchedEffect(lifecycle) {
@@ -663,6 +716,16 @@ fun PlayerScreen(
                     controllerShowTimeoutMs = 3_000
                     controllerAutoShow = false
                     setShowBuffering(PlayerView.SHOW_BUFFERING_NEVER)
+                    setControllerVisibilityListener(PlayerView.ControllerVisibilityListener { visibility ->
+                        if (latestPlayerState.value == PlayerUiState.PLAYING) {
+                            if (visibility == View.VISIBLE) {
+                                playerControllerWasVisible = true
+                                latestActionsCallback.value(true)
+                            } else if (playerControllerWasVisible) {
+                                latestActionsCallback.value(false)
+                            }
+                        }
+                    })
                 }
             },
             update = { view ->
@@ -793,13 +856,15 @@ fun PlayerScreen(
             }
         }
 
-        Row(
-            modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            ToolbarAction(UiIcons.Sliders, "播放选项", onOpenMenu, showLabel = true)
-            ToolbarAction(UiIcons.List, "频道", onOpenChannels,
-                modifier = Modifier.focusRequester(channelButtonFocus), showLabel = true)
+        if (playerState != PlayerUiState.PLAYING || playbackActionsVisible) {
+            Row(
+                modifier = Modifier.align(Alignment.TopEnd).safeDrawingPadding().padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ToolbarAction(UiIcons.Sliders, "播放选项", onOpenMenu, showLabel = true)
+                ToolbarAction(UiIcons.List, "频道", onOpenChannels,
+                    modifier = Modifier.focusRequester(channelButtonFocus), showLabel = true)
+            }
         }
 
         // 左侧悬浮频道列表：覆盖在画面上选台，不用返回列表页。
