@@ -95,6 +95,7 @@ class PlayerActivity : ComponentActivity() {
     private var playbackQuality by mutableStateOf<String?>(null)
 
     private var urls by mutableStateOf<List<String>>(emptyList())
+    private var isCatchupPlayback by mutableStateOf(false)
     private var currentLineIndex by mutableIntStateOf(0)
     private var failedAttemptUrls by mutableStateOf<Set<String>>(emptySet())
     private var menuVisible by mutableStateOf(false)
@@ -160,6 +161,7 @@ class PlayerActivity : ComponentActivity() {
 
         urls = intent.getStringArrayListExtra(EXTRA_URLS) ?: emptyList()
         channelName = intent.getStringExtra(EXTRA_NAME) ?: ""
+        isCatchupPlayback = intent.getBooleanExtra(EXTRA_IS_CATCHUP, false)
 
         val allChannels = ChannelCache.channels
         totalChannels = allChannels.size
@@ -351,6 +353,7 @@ class PlayerActivity : ComponentActivity() {
         channelTvgIds = channel.tvgIds
         channelLogoUrl = channel.logoUrl
         urls = channel.urls
+        isCatchupPlayback = false
         totalChannels = total
         addRecentChannel(this, channel.name)
         AppLog.log("$action：$channelName（${index + 1}/$total）")
@@ -492,16 +495,17 @@ class PlayerActivity : ComponentActivity() {
         playbackQuality = null
         mainHandler.removeCallbacks(markPlaybackStable)
 
-        val mediaItem = MediaItem.Builder()
-            .setUri(url)
-            .setLiveConfiguration(
+        val mediaItemBuilder = MediaItem.Builder().setUri(url)
+        if (!isCatchupPlayback) {
+            mediaItemBuilder.setLiveConfiguration(
                 MediaItem.LiveConfiguration.Builder()
                     .setTargetOffsetMs(PlaybackTuning.LIVE_TARGET_OFFSET_MS)
                     .setMinPlaybackSpeed(0.97f)
                     .setMaxPlaybackSpeed(1.0f)
                     .build()
             )
-            .build()
+        }
+        val mediaItem = mediaItemBuilder.build()
         exoPlayer.stop()
         exoPlayer.trackSelectionParameters = exoPlayer.trackSelectionParameters.buildUpon()
             .clearOverridesOfType(C.TRACK_TYPE_AUDIO)
@@ -621,6 +625,7 @@ class PlayerActivity : ComponentActivity() {
     companion object {
         private const val EXTRA_URLS = "channel_urls"
         private const val EXTRA_NAME = "channel_name"
+        private const val EXTRA_IS_CATCHUP = "is_catchup_playback"
         private const val CHANNEL_INFO_DURATION_MS = 4_000L
         private const val PLAYBACK_ACTIONS_DURATION_MS = 4_000L
 
@@ -628,6 +633,12 @@ class PlayerActivity : ComponentActivity() {
             Intent(context, PlayerActivity::class.java)
                 .putStringArrayListExtra(EXTRA_URLS, ArrayList(channel.urls))
                 .putExtra(EXTRA_NAME, channel.name)
+
+        fun createCatchupIntent(context: Context, channel: Channel, programme: Programme): Intent =
+            Intent(context, PlayerActivity::class.java)
+                .putStringArrayListExtra(EXTRA_URLS, ArrayList(catchupPlaybackUrls(channel, programme)))
+                .putExtra(EXTRA_NAME, channel.name)
+                .putExtra(EXTRA_IS_CATCHUP, true)
     }
 }
 

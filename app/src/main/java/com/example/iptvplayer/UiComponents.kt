@@ -82,19 +82,15 @@ fun ChannelLogo(
 ) {
     var logoLoaded by remember(logoUrl) { mutableStateOf(false) }
     var useDarkBackground by remember(logoUrl) { mutableStateOf(false) }
-    val background = when {
-        logoLoaded && useDarkBackground -> Color(0xFF626C76)
-        selected && !logoLoaded -> Color(0xFF626C76)
-        else -> Color.White
-    }
-    val foreground = if (selected) Color.White
+    val background = if (logoLoaded && useDarkBackground) Color(0xFF535D68) else Color(0xFFF2F4F6)
+    val foreground = if (background == Color(0xFF535D68)) Color.White
     else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = modifier
             .size(size)
             .border(
                 1.dp,
-                if (selected) Color.White.copy(alpha = 0.22f) else MaterialTheme.colorScheme.outline,
+                if (selected) UiColors.Info else MaterialTheme.colorScheme.outlineVariant,
                 MaterialTheme.shapes.medium
             )
             .clip(MaterialTheme.shapes.medium)

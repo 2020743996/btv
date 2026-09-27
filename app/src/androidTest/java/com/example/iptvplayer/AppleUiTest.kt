@@ -74,10 +74,10 @@ class AppleUiTest {
         compose.onNodeWithText("刷新频道").assertIsDisplayed()
         compose.onNodeWithText("管理频道源").assertDoesNotExist()
         compose.onNodeWithContentDescription("更多").performClick()
-        compose.onNodeWithText(channels[0].name).performTouchInput { click() }
+        compose.onNodeWithContentDescription("播放 ${channels[0].name}").performTouchInput { click() }
         compose.runOnIdle { assertEquals(channels[0].name, played) }
-        compose.onAllNodesWithContentDescription("收藏")[0].performTouchInput { click() }
-        compose.onNodeWithContentDescription("取消收藏").assertIsDisplayed()
+        compose.onNodeWithContentDescription("收藏 ${channels[0].name}").performTouchInput { click() }
+        compose.onNodeWithContentDescription("取消收藏 ${channels[0].name}").assertIsDisplayed()
         compose.onNodeWithText("收藏 1").performScrollTo().performClick()
         compose.onNodeWithText(channels[0].name).assertIsDisplayed()
         compose.onNodeWithText(channels[1].name).assertDoesNotExist()
@@ -85,7 +85,7 @@ class AppleUiTest {
         compose.onAllNodesWithText("暂无节目单").onFirst().assertExists()
         compose.onAllNodesWithText("设置").onFirst().performClick()
         compose.runOnIdle { assertTrue(openedSettings) }
-        compose.onAllNodesWithText("直播").onFirst().performClick()
+        compose.onNodeWithText("直播", useUnmergedTree = true).assertDoesNotExist()
         screenshot("home")
         if (landscape) compose.onNodeWithText("卫视 2").performClick()
         else compose.onNodeWithText("卫视 2").performScrollTo().performClick()
@@ -138,7 +138,7 @@ class AppleUiTest {
         compose.onAllNodesWithText("频道二下一档").onFirst().assertIsDisplayed()
         compose.onNodeWithText("晚间电影").assertDoesNotExist()
         compose.onAllNodesWithText("频道二下一档").onLast().performClick()
-        compose.onNodeWithText("此节目暂不支持回看。", substring = true).assertIsDisplayed()
+        compose.onNodeWithText("节目尚未开始。", substring = true).assertIsDisplayed()
         compose.runOnIdle { assertEquals(first.name, played) }
     }
 
@@ -174,7 +174,40 @@ class AppleUiTest {
         compose.onNodeWithText("午间节目").assertIsDisplayed()
     }
 
-    @Test fun recentChannelIsFeaturedWithoutRecordingActions() {
+    @Test fun historicalProgrammeStartsCatchupOnlyForDeclaredChannel() {
+        val url = "https://example.com/live.m3u8"
+        val channel = Channel(
+            "回看测试台", "测试", listOf(url), tvgIds = listOf("catchup-test"),
+            catchupByUrl = mapOf(url to CatchupMetadata("default", "https://archive.example/{utc}.m3u8", 2))
+        )
+        val now = System.currentTimeMillis()
+        val programme = Programme("catchup-test", Date(now - 2 * 3_600_000L), Date(now - 90 * 60_000L), "已结束节目")
+        val sources = setOf("https://example.com/catchup-test.xml")
+        EpgCache.configureSources(sources)
+        EpgCache.update(mapOf("catchup-test" to listOf(programme)), sources)
+        var replayed: Pair<Channel, Programme>? = null
+
+        compose.setContent {
+            IptvPlayerTheme {
+                Box(Modifier.fillMaxSize().systemBarsPaddingCompat()) {
+                    ChannelList(mapOf(channel.group to listOf(channel)), emptySet(), emptyList(),
+                        false, false, null, null, 1, onChannelClick = {}, onToggleFavorite = {},
+                        onSpeedTest = {}, onRefresh = {}, onOpenSearch = {}, onOpenSettings = {},
+                        onReplayClick = { selected, selectedProgramme -> replayed = selected to selectedProgramme })
+                }
+            }
+        }
+
+        compose.onNodeWithText(channel.name).performClick()
+        compose.onAllNodesWithText("回看").onFirst().assertIsDisplayed()
+        compose.onNodeWithText("已结束节目").performClick()
+        compose.runOnIdle {
+            assertEquals(channel, replayed?.first)
+            assertEquals(programme, replayed?.second)
+        }
+    }
+
+    @Test fun recentChannelFilterReplacesFeaturedCardAndNoRecordingActions() {
         var played = ""
         compose.setContent {
             IptvPlayerTheme {
@@ -186,8 +219,9 @@ class AppleUiTest {
                 }
             }
         }
-        compose.onNodeWithText("继续观看").assertIsDisplayed()
-        compose.onNodeWithContentDescription("继续观看 ${channels[2].name}").performClick()
+        compose.onNodeWithText("继续观看").assertDoesNotExist()
+        compose.onNodeWithText("最近 1").performScrollTo().performClick()
+        compose.onNodeWithContentDescription("播放 ${channels[2].name}").performClick()
         compose.runOnIdle { assertEquals(channels[2].name, played) }
         compose.onNodeWithText("录制").assertDoesNotExist()
     }
@@ -207,7 +241,7 @@ class AppleUiTest {
         compose.onNodeWithText("暂无最近观看频道").assertIsDisplayed()
     }
 
-    @Test fun longRecentChannelKeepsContinueActionVisible() {
+    @Test fun longRecentChannelRemainsAvailableInFilter() {
         val longName = "非常长的频道名称用于验证窄屏卡片不会遮挡播放操作"
         val channel = Channel(longName, "测试分组", listOf("https://example.com/long"))
         compose.setContent {
@@ -219,8 +253,9 @@ class AppleUiTest {
                 }
             }
         }
-        compose.onNodeWithContentDescription("继续观看 $longName").assertIsDisplayed()
-        compose.onNodeWithText("播放").assertIsDisplayed()
+        compose.onNodeWithText("最近 1").performScrollTo().performClick()
+        compose.onNodeWithText(longName).assertIsDisplayed()
+        compose.onNodeWithText("继续观看").assertDoesNotExist()
     }
 
     @Test fun recentCardIsHiddenWithoutHistory() {

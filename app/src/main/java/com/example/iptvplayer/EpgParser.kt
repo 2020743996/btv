@@ -213,6 +213,9 @@ object EpgCache {
     private var sourceUrls: Set<String> = emptySet()
 
     @Volatile
+    private var lastRequestedCatchupDays: Int = 0
+
+    @Volatile
     var configuredUrls: Set<String> = emptySet()
         private set
 
@@ -223,29 +226,38 @@ object EpgCache {
         sourceUrls = emptySet()
         programmesByChannel = emptyMap()
         loadedAtMillis = 0L
+        lastRequestedCatchupDays = 0
         complete = true
         SourceStatuses.epg = emptyList()
     }
 
     /** programmesByChannel 在后台线程构建好再整体传入，避免主线程做大的 groupBy。 */
     @Synchronized
-    fun update(programmesByChannel: Map<String, List<Programme>>, sourceUrls: Set<String>, complete: Boolean = true) {
+    fun update(
+        programmesByChannel: Map<String, List<Programme>>,
+        sourceUrls: Set<String>,
+        complete: Boolean = true,
+        catchupDays: Int = 0
+    ) {
         if (sourceUrls != configuredUrls) return
         this.programmesByChannel = programmesByChannel
         this.sourceUrls = sourceUrls
+        lastRequestedCatchupDays = catchupDays.coerceIn(0, 365)
         loadedAtMillis = System.currentTimeMillis()
         this.complete = complete
     }
 
     /** 是否已超过有效期需要重新下载（避免频繁进出播放页反复拉 8MB EPG）。 */
-    fun needsRefresh(requestedSources: Set<String>): Boolean =
+    fun needsRefresh(requestedSources: Set<String>, requestedCatchupDays: Int = 0): Boolean =
         requestedSources != sourceUrls ||
+            requestedCatchupDays.coerceIn(0, 365) != lastRequestedCatchupDays ||
             System.currentTimeMillis() - loadedAtMillis >= (if (complete) EPG_TTL_MS else 60_000L)
 
     @Synchronized
-    fun markAttemptFailed(requestedSources: Set<String>) {
+    fun markAttemptFailed(requestedSources: Set<String>, requestedCatchupDays: Int = 0) {
         if (requestedSources != configuredUrls) return
         sourceUrls = requestedSources
+        lastRequestedCatchupDays = requestedCatchupDays.coerceIn(0, 365)
         loadedAtMillis = System.currentTimeMillis()
         complete = false
     }
@@ -321,12 +333,13 @@ private val epgRefreshLock = Mutex()
 
 suspend fun refreshConfiguredEpg(context: Context) = epgRefreshLock.withLock {
     val epgUrls = EpgCache.configuredUrls
-    if (epgUrls.isEmpty() || !EpgCache.needsRefresh(epgUrls)) return@withLock
+    val declaredCatchupDays = maxCatchupHistoryDays(ChannelCache.channels)
+    if (epgUrls.isEmpty() || !EpgCache.needsRefresh(epgUrls, declaredCatchupDays)) return@withLock
     val snapshots = SourceSnapshots(context)
 
     val now = System.currentTimeMillis()
     val maxStart = now + GUIDE_HORIZON_MS
-    val minEnd = now - 2 * 3600_000L
+    val minEnd = epgHistoryWindowStart(now, declaredCatchupDays)
 
     val perSource = coroutineScope {
         val limit = Semaphore(2)
@@ -369,7 +382,7 @@ suspend fun refreshConfiguredEpg(context: Context) = epgRefreshLock.withLock {
     SourceStatuses.epg = perSource.map { it.second }
     val collected = perSource.filter { it.second.health != SourceHealth.FAILED }.map { it.first }
     if (collected.isEmpty()) {
-        EpgCache.markAttemptFailed(epgUrls)
+        EpgCache.markAttemptFailed(epgUrls, declaredCatchupDays)
         return@withLock
     }
 
@@ -387,12 +400,20 @@ suspend fun refreshConfiguredEpg(context: Context) = epgRefreshLock.withLock {
             .sortedBy { it.start }
         merged.groupBy { normalizeEpgChannelId(it.channelId) } to merged.size
     }
-    EpgCache.update(byChannel, epgUrls, complete = perSource.all { it.second.health == SourceHealth.NORMAL })
+    EpgCache.update(
+        byChannel,
+        epgUrls,
+        complete = perSource.all { it.second.health == SourceHealth.NORMAL },
+        catchupDays = declaredCatchupDays
+    )
     AppLog.log(
         "EPG 加载完成：${perSource.count { it.second.health == SourceHealth.NORMAL }}/${epgUrls.size} 个源正常，" +
             "$programmeCount 条节目"
     )
 }
+
+internal fun epgHistoryWindowStart(nowMillis: Long, catchupDays: Int): Long =
+    nowMillis - maxOf(2 * 3600_000L, catchupDays.coerceAtLeast(0).toLong() * 86_400_000L)
 
 /** 某个频道此刻正在播的节目名（没有节目单/没匹配到就返回 null） */
 fun currentProgrammeTitle(channel: Channel): String? =

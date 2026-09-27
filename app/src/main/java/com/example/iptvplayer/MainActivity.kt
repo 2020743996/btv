@@ -26,6 +26,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.TextButton
@@ -105,6 +106,10 @@ class MainActivity : ComponentActivity() {
                     onChannelClick = { channel ->
                         addRecentChannel(this, channel.name)
                         startActivity(PlayerActivity.createIntent(this, channel))
+                    },
+                    onReplayClick = { channel, programme ->
+                        addRecentChannel(this, channel.name)
+                        startActivity(PlayerActivity.createCatchupIntent(this, channel, programme))
                     }
                 )
             }
@@ -113,7 +118,12 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Channel) -> Unit) {
+fun ChannelListScreen(
+    reloadKey: Int,
+    onReload: () -> Unit,
+    onChannelClick: (Channel) -> Unit,
+    onReplayClick: (Channel, Programme) -> Unit = { _, _ -> }
+) {
     val context = LocalContext.current
     var isLoading by remember { mutableStateOf(true) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
@@ -314,6 +324,7 @@ fun ChannelListScreen(reloadKey: Int, onReload: () -> Unit, onChannelClick: (Cha
                 testSummary = testSummary,
                 epgRevision = epgRevision,
                 onChannelClick = onChannelClick,
+                onReplayClick = onReplayClick,
                 onToggleFavorite = { channel ->
                     toggleFavorite(context, channel.name)
                     favorites = getFavorites(context)
@@ -424,7 +435,6 @@ fun channelStatusText(channel: Channel): String? {
 private data class ChannelGroup(val key: String, val name: String, val channels: List<Channel>)
 
 private enum class MainSection(val title: String, val icon: androidx.compose.ui.graphics.vector.ImageVector) {
-    LIVE("直播", UiIcons.Play),
     GUIDE("节目单", UiIcons.Calendar),
     SETTINGS("设置", UiIcons.Sliders)
 }
@@ -441,7 +451,7 @@ private fun MainNavigationPanel(
     ) {
         Text("btv", Modifier.padding(start = 12.dp, bottom = 10.dp),
             style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-        listOf(MainSection.LIVE, MainSection.GUIDE, MainSection.SETTINGS).forEach { section ->
+        listOf(MainSection.GUIDE, MainSection.SETTINGS).forEach { section ->
             var focused by remember { mutableStateOf(false) }
             Row(
                 Modifier.fillMaxWidth().heightIn(min = 48.dp)
@@ -481,7 +491,8 @@ fun ChannelList(
     onSpeedTest: () -> Unit,
     onRefresh: () -> Unit,
     onOpenSearch: () -> Unit,
-    onOpenSettings: () -> Unit
+    onOpenSettings: () -> Unit,
+    onReplayClick: (Channel, Programme) -> Unit = { _, _ -> }
 ) {
     val allChannels = remember(groupedChannels) { groupedChannels.values.flatten() }
     // 预建 "频道名 → 频道" 映射，避免最近观看逐个线性查找（O(n²)）。
@@ -497,12 +508,13 @@ fun ChannelList(
         }
     }
     var selectedFilterKey by rememberSaveable { mutableStateOf("all") }
-    var selectedSection by rememberSaveable { mutableStateOf(MainSection.LIVE) }
+    var savedSection by rememberSaveable { mutableStateOf(MainSection.GUIDE.name) }
+    val selectedSection = runCatching { MainSection.valueOf(savedSection) }.getOrDefault(MainSection.GUIDE)
+    LaunchedEffect(selectedSection) { savedSection = selectedSection.name }
     var selectedGuideDate by rememberSaveable { mutableStateOf(LocalDate.now().toString()) }
     val selectedGroup = filters.firstOrNull { it.key == selectedFilterKey }
         ?: filters.first()
     LaunchedEffect(selectedGroup.key) { selectedFilterKey = selectedGroup.key }
-    val guideMode = selectedSection == MainSection.GUIDE
 
     // 电视和平板保留侧栏；手机使用底部主导航。
     val isWide = useWideChannelLayout()
@@ -524,7 +536,7 @@ fun ChannelList(
 
     val navigate: (MainSection) -> Unit = { destination ->
         when (destination) {
-            MainSection.LIVE, MainSection.GUIDE -> selectedSection = destination
+            MainSection.GUIDE -> savedSection = destination.name
             MainSection.SETTINGS -> onOpenSettings()
         }
     }
@@ -542,8 +554,8 @@ fun ChannelList(
                         )
                 ) {
                     PageHeader(
-                        title = if (selectedSection == MainSection.LIVE) "电视中心" else selectedSection.title,
-                        subtitle = if (selectedSection == MainSection.LIVE) "直播频道 · ${allChannels.size} 个频道" else null,
+                        title = selectedSection.title,
+                        subtitle = "${allChannels.size} 个频道 · 选择节目或直接播放",
                         compactActions = !isWide,
                         actions = {
                             TopBarButtons(elderMode, isTesting, testProgress, onOpenSearch, onRefresh, onSpeedTest)
@@ -572,31 +584,26 @@ fun ChannelList(
                     )
                     Spacer(Modifier.height(if (isWide) 12.dp else 8.dp))
 
-                    if (guideMode && EpgCache.configuredUrls.isEmpty()) {
+                    if (EpgCache.configuredUrls.isEmpty()) {
                         Text("暂无节目单 · 在设置中添加 XMLTV 地址", color = AppleUi.Secondary,
                             fontSize = 13.sp,
                             modifier = Modifier.padding(bottom = 8.dp).clickable(onClick = onOpenSettings))
-                    } else if (guideMode && SourceStatuses.epg.isNotEmpty() &&
+                    } else if (SourceStatuses.epg.isNotEmpty() &&
                         SourceStatuses.epg.all { it.health == SourceHealth.FAILED }) {
                         Text("节目单加载失败 · 查看源状态", color = MaterialTheme.colorScheme.error,
                             fontSize = 13.sp,
                             modifier = Modifier.padding(bottom = 8.dp).clickable(onClick = onOpenSettings))
                     }
 
-                    val recentFeatured = if (selectedSection == MainSection.LIVE &&
-                        selectedGroup.key !in setOf("favorite", "recent")) {
-                        recentNames.firstNotNullOfOrNull(channelByName::get)
-                    } else null
                     ChannelListContent(
                         selectedGroup = selectedGroup,
                         favorites = favorites,
                         epgRevision = epgRevision,
-                        guideMode = guideMode,
                         guideDate = LocalDate.parse(selectedGuideDate),
                         onGuideDateChange = { selectedGuideDate = it.toString() },
                         onChannelClick = onChannelClick,
+                        onReplayClick = onReplayClick,
                         onToggleFavorite = onToggleFavorite,
-                        featuredChannel = recentFeatured,
                         modifier = Modifier.weight(1f)
                     )
 
@@ -698,7 +705,7 @@ private fun HomeBottomNavigation(
     Column(modifier.fillMaxWidth()) {
         Box(Modifier.fillMaxWidth().height(1.dp).background(Color.White.copy(alpha = 0.82f)))
         Row(Modifier.fillMaxWidth().weight(1f), verticalAlignment = Alignment.CenterVertically) {
-            listOf(MainSection.LIVE, MainSection.GUIDE, MainSection.SETTINGS).forEach { section ->
+            listOf(MainSection.GUIDE, MainSection.SETTINGS).forEach { section ->
                 val active = selected == section
                 var focused by remember { mutableStateOf(false) }
                 Column(
@@ -731,12 +738,11 @@ private fun ChannelListContent(
     selectedGroup: ChannelGroup,
     favorites: Set<String>,
     epgRevision: Int,
-    guideMode: Boolean,
     guideDate: LocalDate,
     onGuideDateChange: (LocalDate) -> Unit,
     onChannelClick: (Channel) -> Unit,
+    onReplayClick: (Channel, Programme) -> Unit,
     onToggleFavorite: (Channel) -> Unit,
-    featuredChannel: Channel?,
     modifier: Modifier = Modifier
 ) {
     Column(modifier = modifier.fillMaxHeight()) {
@@ -761,104 +767,23 @@ private fun ChannelListContent(
                 when (selectedGroup.key) {
                     "favorite" -> "暂无收藏频道"
                     "recent" -> "暂无最近观看频道"
-                    else -> if (guideMode) "此分组暂无匹配节目" else "此分组暂无频道"
+                    else -> "此分组暂无频道"
                 },
                 color = AppleUi.Secondary,
                 modifier = Modifier.padding(vertical = 20.dp)
             )
-        } else if (guideMode) {
+        } else {
             GuideScheduleContent(
                 channels = selectedGroup.channels,
+                favorites = favorites,
                 selectedDate = guideDate,
                 onDateChange = onGuideDateChange,
                 epgRevision = epgRevision,
                 onChannelClick = onChannelClick,
+                onReplayClick = onReplayClick,
+                onToggleFavorite = onToggleFavorite,
                 modifier = Modifier.weight(1f)
             )
-        } else LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(bottom = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(0.dp)
-        ) {
-            if (!guideMode && featuredChannel != null) {
-                item(key = "continue-watching") {
-                    ContinueWatchingCard(
-                        channel = featuredChannel,
-                        epgRevision = epgRevision,
-                        onClick = { onChannelClick(featuredChannel) }
-                    )
-                }
-            }
-            itemsIndexed(selectedGroup.channels, key = { _, channel -> channel.name }) { index, channel ->
-                // epgRevision 变化时重新读取当前节目（remember 以它为键触发重算）。
-                val nowPlaying = remember(epgRevision, channel) { currentProgrammeTitle(channel) }
-                // 状态只依赖频道自身：测速后是新的 Channel 实例，不必随 EPG 刷新重算排序。
-                val status = remember(channel) { channelStatusText(channel) }
-                ChannelRow(
-                    channel = channel,
-                    index = index + 1,
-                    status = status,
-                    nowPlaying = nowPlaying,
-                    isFavorite = channel.name in favorites,
-                    onClick = { onChannelClick(channel) },
-                    onToggleFavorite = { onToggleFavorite(channel) }
-                )
-                ListSeparator(inset = 66.dp)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ContinueWatchingCard(channel: Channel, epgRevision: Int, onClick: () -> Unit) {
-    val schedule = remember(epgRevision, channel) { EpgCache.schedule(channel.tvgIds) }
-    val zone = remember { ZoneId.systemDefault() }
-    val current = schedule.current
-    val next = schedule.next
-    Row(
-        Modifier.fillMaxWidth().padding(bottom = 14.dp)
-            .clip(RoundedCornerShape(8.dp))
-            .background(Color.White)
-            .border(1.dp, AppleUi.Separator, RoundedCornerShape(8.dp))
-            .clickable(onClick = onClick)
-            .padding(12.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        ChannelLogo(channel, size = 48.dp)
-        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
-            Text("继续观看", color = UiColors.Info, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-            Text(channel.name, color = MaterialTheme.colorScheme.onSurface, fontSize = 16.sp,
-                fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            val currentLabel = current?.let {
-                "${guideTimeFormat.format(it.start.toInstant().atZone(zone))} · ${it.title}"
-            }
-            val nextLabel = next?.let {
-                "接下来 ${guideTimeFormat.format(it.start.toInstant().atZone(zone))} · ${it.title}"
-            }
-            Text(currentLabel ?: nextLabel ?: "暂无节目单",
-                color = AppleUi.Secondary, fontSize = 12.sp, maxLines = 1,
-                overflow = TextOverflow.Ellipsis)
-            if (currentLabel != null && nextLabel != null) {
-                Text(nextLabel, color = AppleUi.Secondary, fontSize = 11.sp, maxLines = 1,
-                    overflow = TextOverflow.Ellipsis)
-            }
-        }
-        var focused by remember { mutableStateOf(false) }
-        Row(
-            Modifier.onFocusChanged { focused = it.isFocused }
-                .clip(RoundedCornerShape(8.dp))
-                .background(UiColors.Info)
-                .border(if (focused) 2.dp else 0.dp,
-                    if (focused) MaterialTheme.colorScheme.onSurface else Color.Transparent,
-                    RoundedCornerShape(8.dp))
-                .clickable(onClick = onClick)
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(UiIcons.Play, contentDescription = "继续观看 ${channel.name}",
-                tint = Color.White, modifier = Modifier.size(17.dp))
-            Text("播放", color = Color.White, fontSize = 13.sp, fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 5.dp))
         }
     }
 }
@@ -866,24 +791,42 @@ private fun ContinueWatchingCard(channel: Channel, epgRevision: Int, onClick: ()
 @Composable
 private fun GuideScheduleContent(
     channels: List<Channel>,
+    favorites: Set<String>,
     selectedDate: LocalDate,
     onDateChange: (LocalDate) -> Unit,
     epgRevision: Int,
     onChannelClick: (Channel) -> Unit,
+    onReplayClick: (Channel, Programme) -> Unit,
+    onToggleFavorite: (Channel) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val zone = remember { ZoneId.systemDefault() }
     val start = remember(selectedDate, zone) { selectedDate.atStartOfDay(zone).toInstant().toEpochMilli() }
     val end = remember(selectedDate, zone) { selectedDate.plusDays(1).atStartOfDay(zone).toInstant().toEpochMilli() }
     var selectedProgramme by remember { mutableStateOf<Programme?>(null) }
+    var selectedProgrammeChannel by remember { mutableStateOf<Channel?>(null) }
     val now = System.currentTimeMillis()
     val dateFormatter = remember { DateTimeFormatter.ofPattern("M月d日") }
     var expandedChannelName by rememberSaveable(selectedDate.toString()) { mutableStateOf<String?>(null) }
+    val replayDays = remember(channels) { maxCatchupHistoryDays(channels) }
+    val dateListState = rememberLazyListState(initialFirstVisibleItemIndex = replayDays)
+    LaunchedEffect(replayDays) { dateListState.scrollToItem(replayDays) }
+    LaunchedEffect(replayDays, selectedDate) {
+        val earliestDate = LocalDate.now(zone).minusDays(replayDays.toLong())
+        if (selectedDate.isBefore(earliestDate)) onDateChange(earliestDate)
+    }
 
-    LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(bottom = 10.dp)) {
-        items(7) { offset ->
-            val date = LocalDate.now().plusDays(offset.toLong())
-            GuideDateChip(if (offset == 0) "今天" else dateFormatter.format(date), date == selectedDate) {
+    LazyRow(state = dateListState, horizontalArrangement = Arrangement.spacedBy(6.dp),
+        modifier = Modifier.padding(bottom = 10.dp)) {
+        items(replayDays + 7) { index ->
+            val offset = index - replayDays
+            val date = LocalDate.now(zone).plusDays(offset.toLong())
+            val label = when (offset) {
+                0 -> "今天"
+                -1 -> "昨天"
+                else -> dateFormatter.format(date)
+            }
+            GuideDateChip(label, date == selectedDate) {
                 onDateChange(date)
             }
         }
@@ -895,6 +838,7 @@ private fun GuideScheduleContent(
             }
             val activeIndex = programmes.indexOfFirst { now >= it.start.time && now < it.end.time }
             val preview = when {
+                selectedDate.isBefore(LocalDate.now(zone)) -> programmes.take(2)
                 activeIndex >= 0 -> programmes.drop(activeIndex).take(2)
                 else -> programmes.filter { it.end.time > now }.take(2)
             }
@@ -921,13 +865,20 @@ private fun GuideScheduleContent(
                             } else {
                                 preview.forEachIndexed { index, programme ->
                                     val active = now >= programme.start.time && now < programme.end.time
+                                    val canReplay = !active && programme.end.time <= now &&
+                                        catchupPlaybackUrls(channel, programme, now).isNotEmpty()
                                     val label = when {
                                         active -> "正在播"
+                                        programme.end.time <= now -> if (canReplay) "可回看" else "已播出"
                                         index == 0 && activeIndex < 0 -> "即将播出"
                                         else -> "接下来"
                                     }
                                     Row(verticalAlignment = Alignment.CenterVertically) {
-                                        Text(label, color = if (active) UiColors.Live else AppleUi.Secondary,
+                                        Text(label, color = when {
+                                            active -> UiColors.Live
+                                            canReplay -> UiColors.Info
+                                            else -> AppleUi.Secondary
+                                        },
                                             fontSize = 11.sp, maxLines = 1)
                                         Text(guideTimeFormat.format(programme.start.toInstant().atZone(zone)),
                                             Modifier.padding(start = 5.dp), color = AppleUi.Secondary, fontSize = 11.sp)
@@ -942,6 +893,11 @@ private fun GuideScheduleContent(
                             modifier = Modifier.size(20.dp).graphicsLayer { rotationZ = if (expanded) 90f else 0f },
                             tint = if (expanded) UiColors.Info else AppleUi.Secondary)
                     }
+                    ToolbarAction(
+                        UiIcons.Heart,
+                        if (channel.name in favorites) "取消收藏 ${channel.name}" else "收藏 ${channel.name}",
+                        { onToggleFavorite(channel) }, showLabel = false, active = channel.name in favorites
+                    )
                     ToolbarAction(UiIcons.Play, "播放 ${channel.name}", { onChannelClick(channel) }, showLabel = false)
                 }
                 if (expanded) {
@@ -954,9 +910,19 @@ private fun GuideScheduleContent(
                             GuideProgrammeRow(
                                 programme = programme,
                                 active = active,
+                                replayAvailable = !active && programme.end.time <= now &&
+                                    catchupPlaybackUrls(channel, programme, now).isNotEmpty(),
                                 zone = zone,
                                 onClick = {
-                                    if (active) onChannelClick(channel) else selectedProgramme = programme
+                                    when {
+                                        active -> onChannelClick(channel)
+                                        programme.end.time <= now && catchupPlaybackUrls(channel, programme, now).isNotEmpty() ->
+                                            onReplayClick(channel, programme)
+                                        else -> {
+                                            selectedProgrammeChannel = channel
+                                            selectedProgramme = programme
+                                        }
+                                    }
                                 }
                             )
                         }
@@ -972,7 +938,8 @@ private fun GuideScheduleContent(
             title = { Text(programme.title) },
             text = {
                 Text("${DateTimeFormatter.ofPattern("M月d日 HH:mm").format(programme.start.toInstant().atZone(zone))} - " +
-                    "${DateTimeFormatter.ofPattern("HH:mm").format(programme.end.toInstant().atZone(zone))}\n此节目暂不支持回看。")
+                    "${DateTimeFormatter.ofPattern("HH:mm").format(programme.end.toInstant().atZone(zone))}\n" +
+                    if (programme.start.time > now) "节目尚未开始。" else "${selectedProgrammeChannel?.name ?: "此频道"} 未声明有效的 M3U 回看配置。")
             },
             confirmButton = { TextButton(onClick = { selectedProgramme = null }) { Text("关闭") } }
         )
@@ -983,6 +950,7 @@ private fun GuideScheduleContent(
 private fun GuideProgrammeRow(
     programme: Programme,
     active: Boolean,
+    replayAvailable: Boolean,
     zone: ZoneId,
     onClick: () -> Unit
 ) {
@@ -1000,8 +968,12 @@ private fun GuideProgrammeRow(
             color = if (active) UiColors.Live else AppleUi.Secondary, fontSize = 12.sp)
         Text(programme.title, Modifier.weight(1f).padding(start = 8.dp), maxLines = 2,
             overflow = TextOverflow.Ellipsis, fontSize = 14.sp)
-        if (active) Text("正在播", Modifier.padding(start = 8.dp), color = UiColors.Live,
-            fontSize = 11.sp, maxLines = 1)
+        when {
+            active -> Text("正在播", Modifier.padding(start = 8.dp), color = UiColors.Live,
+                fontSize = 11.sp, maxLines = 1)
+            replayAvailable -> Text("回看", Modifier.padding(start = 8.dp), color = UiColors.Info,
+                fontSize = 11.sp, maxLines = 1)
+        }
     }
 }
 

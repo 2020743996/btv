@@ -58,6 +58,77 @@ class M3uParserTest {
     }
 
     @Test
+    fun parseM3u_preservesCatchupMetadataPerUrlAndMergesItWithoutCrossingLines() {
+        val parsed = parseM3u(
+            """
+                #EXTM3U
+                #EXTINF:-1 catchup="default" catchup-source="https://archive.example/{utc}.m3u8" catchup-days="3",CCTV-1
+                https://one.example/live
+                #EXTINF:-1 catchup="append" catchup-source="&utc={utc}&duration={duration}" catchup-days="5",CCTV1 HD
+                https://two.example/live
+            """.trimIndent()
+        )
+
+        val merged = mergeChannels(parsed).single()
+        assertEquals("default", merged.catchupByUrl["https://one.example/live"]?.mode)
+        assertEquals(3, merged.catchupByUrl["https://one.example/live"]?.days)
+        assertEquals("append", merged.catchupByUrl["https://two.example/live"]?.mode)
+        assertEquals(5, merged.catchupByUrl["https://two.example/live"]?.days)
+    }
+
+    @Test
+    fun catchupUrlBuilderSupportsDefaultAndAppendTemplatesAndEnforcesDeclaredWindow() {
+        val now = 1_800_000_000_000L
+        val programme = Programme("news", java.util.Date(now - 3_600_000L), java.util.Date(now - 1_800_000L), "新闻")
+        val startSeconds = programme.start.time / 1000L
+        val durationSeconds = (programme.end.time - programme.start.time) / 1000L
+
+        assertEquals(
+            "https://archive.example/$startSeconds/$durationSeconds",
+            buildCatchupPlaybackUrl(
+                "https://live.example/channel.m3u8",
+                CatchupMetadata("default", "https://archive.example/{utc}/{duration}", 2),
+                programme,
+                now
+            )
+        )
+        assertEquals(
+            "https://archive.example/$startSeconds/${durationSeconds / 60}",
+            buildCatchupPlaybackUrl(
+                "https://live.example/channel.m3u8",
+                CatchupMetadata("default", "https://archive.example/{utc}/{duration:60}", 2),
+                programme,
+                now
+            )
+        )
+        assertEquals(
+            "https://live.example/channel.m3u8?utc=$startSeconds&duration=$durationSeconds",
+            buildCatchupPlaybackUrl(
+                "https://live.example/channel.m3u8",
+                CatchupMetadata("append", "&utc={utc}&duration={duration}", 2),
+                programme,
+                now
+            )
+        )
+        assertNull(buildCatchupPlaybackUrl(
+            "https://live.example/channel.m3u8",
+            CatchupMetadata("default", "https://archive.example/{utc}", null),
+            programme,
+            now
+        ))
+        val tooOld = programme.copy(
+            start = java.util.Date(now - 2 * 86_400_000L),
+            end = java.util.Date(now - 2 * 86_400_000L + 1_800_000L)
+        )
+        assertNull(buildCatchupPlaybackUrl(
+            "https://live.example/channel.m3u8",
+            CatchupMetadata("default", "https://archive.example/{utc}", 1),
+            tooOld,
+            now
+        ))
+    }
+
+    @Test
     fun parseM3u_usesTvgNameWhenIdIsMissing() {
         val text = """
             #EXTM3U

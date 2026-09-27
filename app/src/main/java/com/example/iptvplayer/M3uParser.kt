@@ -1,12 +1,80 @@
 package com.example.iptvplayer
 
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
 private val GROUP_ATTRIBUTE = Regex("group-title=\\\"([^\\\"]*)\\\"")
 private val TVG_ID_ATTRIBUTE = Regex("tvg-id=\\\"([^\\\"]*)\\\"")
 private val TVG_NAME_ATTRIBUTE = Regex("tvg-name=\\\"([^\\\"]*)\\\"")
 private val TVG_LOGO_ATTRIBUTE = Regex("tvg-logo=\\\"([^\\\"]*)\\\"")
+private val CATCHUP_ATTRIBUTE = Regex("catchup=\\\"([^\\\"]*)\\\"", RegexOption.IGNORE_CASE)
+private val CATCHUP_SOURCE_ATTRIBUTE = Regex("catchup-source=\\\"([^\\\"]*)\\\"", RegexOption.IGNORE_CASE)
+private val CATCHUP_DAYS_ATTRIBUTE = Regex("catchup-days=\\\"([^\\\"]*)\\\"", RegexOption.IGNORE_CASE)
+private const val MAX_CATCHUP_DAYS = 365
 private val EPG_URL_ATTRIBUTE = Regex("(?:x-tvg-url|url-tvg)=\\\"([^\\\"]*)\\\"")
 private val CHANNEL_SEPARATORS = Regex("[\\s\\-_.·、()（）]")
 private val QUALITY_SUFFIXES = Regex("(高清|超清|标清|uhd|fhd|hd|sd|1080p|720p|4k|2160p|flv|ts|hls)+$")
+
+data class CatchupMetadata(val mode: String, val source: String, val days: Int?)
+
+fun buildCatchupPlaybackUrl(
+    liveUrl: String,
+    metadata: CatchupMetadata?,
+    programme: Programme,
+    nowMillis: Long = System.currentTimeMillis()
+): String? {
+    val catchup = metadata ?: return null
+    val days = catchup.days?.takeIf { it > 0 } ?: return null
+    if (catchup.mode !in setOf("default", "append") || catchup.source.isBlank()) return null
+    if (programme.end.time <= programme.start.time || programme.end.time > nowMillis) return null
+    if (programme.start.time < nowMillis - days.toLong() * 86_400_000L) return null
+
+    val startSeconds = programme.start.time / 1000L
+    val endSeconds = programme.end.time / 1000L
+    val durationSeconds = ((programme.end.time - programme.start.time) / 1000L).coerceAtLeast(1L)
+    val utc = DateTimeFormatter.ofPattern("yyyyMMddHHmmss", Locale.ROOT).withZone(ZoneOffset.UTC)
+        .format(programme.start.toInstant())
+    var template = catchup.source
+        .replace("{utcend}", endSeconds.toString())
+        .replace("${'$'}{end}", endSeconds.toString())
+        .replace("{utc}", startSeconds.toString())
+        .replace("${'$'}{start}", startSeconds.toString())
+        .replace("{lutc}", (nowMillis / 1000L).toString())
+        .replace("${'$'}{now}", (nowMillis / 1000L).toString())
+        .replace("${'$'}{timestamp}", (nowMillis / 1000L).toString())
+        .replace("{Y}", utc.substring(0, 4))
+        .replace("{m}", utc.substring(4, 6))
+        .replace("{d}", utc.substring(6, 8))
+        .replace("{H}", utc.substring(8, 10))
+        .replace("{M}", utc.substring(10, 12))
+        .replace("{S}", utc.substring(12, 14))
+        .replace("{duration}", durationSeconds.toString())
+        .replace("${'$'}{duration}", durationSeconds.toString())
+    template = Regex("\\{duration:(\\d+)\\}").replace(template) { match ->
+        val divisor = match.groupValues[1].toLongOrNull()?.takeIf { it > 0 } ?: return@replace match.value
+        (durationSeconds / divisor).toString()
+    }
+    return when (catchup.mode) {
+        "default" -> template
+        "append" -> when {
+            template.startsWith("?") && '?' in liveUrl -> liveUrl + "&" + template.drop(1)
+            template.startsWith("&") && '?' !in liveUrl -> liveUrl + "?" + template.drop(1)
+            else -> liveUrl + template
+        }
+        else -> null
+    }
+}
+
+fun catchupPlaybackUrls(channel: Channel, programme: Programme, nowMillis: Long = System.currentTimeMillis()): List<String> =
+    channel.urls.mapNotNull { url ->
+        buildCatchupPlaybackUrl(url, channel.catchupByUrl[url], programme, nowMillis)
+    }.distinct()
+
+internal fun maxCatchupHistoryDays(channels: List<Channel>): Int = channels.asSequence()
+    .flatMap { it.catchupByUrl.values.asSequence() }
+    .mapNotNull { it.days?.takeIf { days -> days > 0 } }
+    .maxOrNull() ?: 0
 
 /**
  * 一个频道的信息。
@@ -30,7 +98,8 @@ data class Channel(
     // 每条 URL 在原始 M3U 中对应的频道名/tvg-id，用于识别 CCTV4K 等线路级画质标记。
     val urlQualityHints: Map<String, String> = emptyMap(),
     // 原始完整线路集。测速可从 urls 隐藏失效线，但恢复时仍能找回，不必重新下载 M3U。
-    val allUrls: List<String> = urls
+    val allUrls: List<String> = urls,
+    val catchupByUrl: Map<String, CatchupMetadata> = emptyMap()
 )
 
 /**
@@ -60,6 +129,7 @@ fun parseM3u(text: String): List<Channel> {
     var pendingGroup: String? = null
     var pendingTvgId: String? = null
     var pendingLogoUrl: String? = null
+    var pendingCatchup: CatchupMetadata? = null
 
     // lineSequence 惰性逐行遍历：大 M3U（几十万行）不必先把所有行收集成一个中间列表。
     for (rawLine in text.lineSequence()) {
@@ -81,6 +151,14 @@ fun parseM3u(text: String): List<Channel> {
                     ?.get(1)
                     ?.trim()
                     ?.takeIf { it.isNotEmpty() }
+                val catchupMode = CATCHUP_ATTRIBUTE.find(line)?.groupValues?.get(1)
+                    ?.trim()?.lowercase(Locale.ROOT)
+                val catchupSource = CATCHUP_SOURCE_ATTRIBUTE.find(line)?.groupValues?.get(1)?.trim().orEmpty()
+                val catchupDays = CATCHUP_DAYS_ATTRIBUTE.find(line)?.groupValues?.get(1)
+                    ?.trim()?.toIntOrNull()?.takeIf { it > 0 }?.coerceAtMost(MAX_CATCHUP_DAYS)
+                pendingCatchup = if (catchupMode in setOf("default", "append") && catchupSource.isNotBlank()) {
+                    CatchupMetadata(catchupMode!!, catchupSource, catchupDays)
+                } else null
 
                 // 频道名在最后一个逗号后面，例如 ...group-title="央视",CCTV-1 综合
                 val commaIndex = line.lastIndexOf(',')
@@ -108,7 +186,8 @@ fun parseM3u(text: String): List<Channel> {
                         urls = listOf(line), // 单个源解析出来，每个频道只有这一条线路
                         tvgIds = listOfNotNull(pendingTvgId),
                         logoUrl = pendingLogoUrl,
-                        urlQualityHints = mapOf(line to qualityHint)
+                        urlQualityHints = mapOf(line to qualityHint),
+                        catchupByUrl = pendingCatchup?.let { mapOf(line to it) }.orEmpty()
                     )
                 )
                 // 配对完就清空，防止漏掉 EXTINF 时把旧名字错配给下一个频道
@@ -116,6 +195,7 @@ fun parseM3u(text: String): List<Channel> {
                 pendingGroup = null
                 pendingTvgId = null
                 pendingLogoUrl = null
+                pendingCatchup = null
             }
         }
     }
@@ -186,11 +266,13 @@ fun mergeChannels(allChannels: List<Channel>): List<Channel> {
             val newUrls = (existing.urls + channel.urls).distinct()
             val newTvgIds = (existing.tvgIds + channel.tvgIds).distinct()
             val newQualityHints = channel.urlQualityHints + existing.urlQualityHints
+            val newCatchupByUrl = channel.catchupByUrl + existing.catchupByUrl
             merged[key] = existing.copy(
                 urls = newUrls,
                 tvgIds = newTvgIds,
                 logoUrl = existing.logoUrl ?: channel.logoUrl,
                 urlQualityHints = newQualityHints,
+                catchupByUrl = newCatchupByUrl,
                 allUrls = newUrls
             )
         }

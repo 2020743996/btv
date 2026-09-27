@@ -18,6 +18,13 @@ class EpgParserTest {
     }
 
     @Test
+    fun epgHistoryWindowFollowsDeclaredCatchupDaysWithTwoHourBaseline() {
+        val now = 2_000_000_000_000L
+        assertEquals(now - 4L * 86_400_000L, epgHistoryWindowStart(now, 4))
+        assertEquals(now - 2L * 3_600_000L, epgHistoryWindowStart(now, 0))
+    }
+
+    @Test
     fun sourceChangeClearsOldScheduleAndRejectsOldDownload() {
         val programme = Programme("news", Date(0), Date(3_000), "old")
         val first = setOf("https://one.example/epg")
@@ -39,6 +46,18 @@ class EpgParserTest {
         EpgCache.update(mapOf("news" to listOf(programme)), source)
         EpgCache.markAttemptFailed(source)
         assertEquals(programme, EpgCache.schedule(listOf("news"), Date(1_000)).current)
+        EpgCache.configureSources(emptySet())
+    }
+
+    @Test
+    fun catchupWindowChangeInvalidatesEpgWithoutRetryingEveryFrameAfterFailure() {
+        val source = setOf("https://one.example/epg")
+        EpgCache.configureSources(source)
+        EpgCache.update(emptyMap(), source, catchupDays = 0)
+        assertEquals(false, EpgCache.needsRefresh(source, 0))
+        assertEquals(true, EpgCache.needsRefresh(source, 3))
+        EpgCache.markAttemptFailed(source, 3)
+        assertEquals(false, EpgCache.needsRefresh(source, 3))
         EpgCache.configureSources(emptySet())
     }
 
